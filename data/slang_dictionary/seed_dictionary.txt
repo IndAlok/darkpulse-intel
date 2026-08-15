@@ -1,0 +1,224 @@
+
+snow | cocaine | en | dea_lexicon
+ice | methamphetamine | en | dea_lexicon
+molly | MDMA | en | dea_lexicon
+acid | LSD | en | dea_lexicon
+tabs | LSD blotters | en | dea_lexicon
+pills | MDMA/ecstasy tablets | en | dea_lexicon
+crystal | methamphetamine | en | dea_lexicon
+weed | cannabis | en | dea_lexicon
+pot | cannabis | en | dea_lexicon
+hash | hashish | en | dea_lexicon
+brown sugar | heroin (impure) | en | dea_lexicon
+smack | heroin | en | dea_lexicon
+meow meow | mephedrone | en | dea_lexicon
+coke | cocaine | en | dea_lexicon
+blow | cocaine | en | dea_lexicon
+bump | cocaine dose | en | dea_lexicon
+line | cocaine line | en | dea_lexicon
+rock | crack cocaine | en | dea_lexicon
+crack | crack cocaine | en | dea_lexicon
+speed | amphetamine | en | dea_lexicon
+meth | methamphetamine | en | dea_lexicon
+glass | methamphetamine | en | dea_lexicon
+shard | methamphetamine crystal | en | dea_lexicon
+shabu | methamphetamine | en | dea_lexicon
+ecstasy | MDMA | en | dea_lexicon
+thizz | MDMA/ecstasy | en | dea_lexicon
+roll | MDMA session | en | dea_lexicon
+rolling | under MDMA influence | en | dea_lexicon
+trip | LSD session | en | dea_lexicon
+tripping | under LSD influence | en | dea_lexicon
+blotter | LSD paper | en | dea_lexicon
+dose | LSD dose | en | dea_lexicon
+microdot | LSD pill form | en | dea_lexicon
+mushroom | psilocybin | en | dea_lexicon
+shroom | psilocybin | en | dea_lexicon
+boom | psilocybin | en | dea_lexicon
+dank | high-quality cannabis | en | dea_lexicon
+loud | high-quality cannabis | en | dea_lexicon
+kush | cannabis strain | en | dea_lexicon
+bud | cannabis flower | en | dea_lexicon
+joint | cannabis cigarette | en | dea_lexicon
+blunt | cannabis cigar wrap | en | dea_lexicon
+bong | cannabis water pipe | en | dea_lexicon
+dab | cannabis concentrate | en | dea_lexicon
+wax | cannabis concentrate | en | dea_lexicon
+shatter | cannabis concentrate | en | dea_lexicon
+edible | cannabis edible | en | dea_lexicon
+brownie | cannabis edible | en | dea_lexicon
+opium | opium | en | dea_lexicon
+oxy | oxycodone | en | dea_lexicon
+perc | percocet | en | dea_lexicon
+vic | vicodin | en | dea_lexicon
+norco | hydrocodone | en | dea_lexicon
+fent | fentanyl | en | dea_lexicon
+patch | fentanyl patch | en | dea_lexicon
+lean | codeine/promethazine drink | en | dea_lexicon
+sizzurp | codeine/promethazine drink | en | dea_lexicon
+xan | xanax | en | dea_lexicon
+bar | xanax bar | en | dea_lexicon
+benzo | benzodiazepine | en | dea_lexicon
+valium | diazepam | en | dea_lexicon
+klonopin | clonazepam | en | dea_lexicon
+addie | adderall | en | dea_lexicon
+addy | adderall | en | dea_lexicon
+ritalin | methylphenidate | en | dea_lexicon
+ghb | gamma-hydroxybutyrate | en | dea_lexicon
+liquid ecstasy | GHB | en | dea_lexicon
+special k | ketamine | en | dea_lexicon
+k | ketamine | en | dea_lexicon
+ket | ketamine | en | dea_lexicon
+PCP | phencyclidine | en | dea_lexicon
+angel dust | PCP | en | dea_lexicon
+piper | synthetic cannabinoid | en | dea_lexicon
+spice | synthetic cannabinoid | en | dea_lexicon
+k2 | synthetic cannabinoid | en | dea_lexicon
+bath salts | synthetic cathinone | en | dea_lexicon
+flakka | alpha-PVP | en | dea_lexicon
+nbome | 25I-NBOMe | en | dea_lexicon
+n-bomb | 25I-NBOMe | en | dea_lexicon
+
+maal | drugs/goods | hi | regional
+goli | pill/tablet | hi | regional
+powder | cocaine/mephedrone powder | hinglish | regional
+nasha | intoxicant (generic) | hi | regional
+pudiya | small drug packet | hi | regional
+chitta | heroin (Punjab/Gujarat) | hi | regional
+ganja | cannabis | hi | dea_lexicon
+charas | hashish | hi | dea_lexicon
+bhang | cannabis edible | hi | regional
+afim | opium | hi | regional
+smack | heroin | hi | regional
+junta | people/crowd (coded) | hi | regional
+raat ki sawari | night delivery | hi | regional
+saman | goods/contraband | hi | regional
+packet | drug packet | hinglish | regional
+delivery | drug delivery | hinglish | regional
+score | drug purchase | hinglish | regional
+hookah | smoking device | hi | regional
+chillum | smoking pipe | hi | regional
+sutta | cigarette (coded) | hi | regional
+
+maal | drugs/goods | gu | regional
+saman | goods/contraband | gu | regional
+chokri | girl (coded reference) | gu | regional
+bhai | brother (coded contact) | gu | regional
+seth | boss/dealer (coded) | gu | regional
+number | quantity (coded) | gu | regional
+kaam | work/deal (coded) | gu | regional
+rate | price | gu | regional
+quality | drug quality | gu | regional
+delivery | delivery service | gu | regional
+adajan | Adajan area | gu | surat_geo
+varachha | Varachha area | gu | surat_geo
+katargam | Katargam area | gu | surat_geo
+udhna | Udhna area | gu | surat_geo
+piplod | Piplod area | gu | surat_geo
+rander | Rander area | gu | surat_geo
+athwa | Athwa area | gu | surat_geo
+vesu | Vesu area | gu | surat_geo
+dumas | Dumas area | gu | surat_geo
+pal | Pal area | gu | surat_geo
+godadara | Godadara area | gu | surat_geo
+bamroli | Bamroli area | gu | surat_geo
+puna | Punagam area | gu | surat_geo
+magob | Magob area | gu | surat_geo
+limbayat | Limbayat area | gu | surat_geo
+
+surat special | Surat-specific product | gu | surat_coded
+city delivery | Surat city delivery | gu | surat_coded
+area number | neighborhood code | gu | surat_coded
+fast delivery | quick delivery | gu | surat_coded
+home delivery | door-to-door | gu | surat_coded
+night order | after-hours delivery | gu | surat_coded
+weekend order | weekend delivery | gu | surat_coded
+
+🍃 | cannabis | emoji | telegram_observed
+❄️ | cocaine/mephedrone | emoji | telegram_observed
+💊 | MDMA/pills | emoji | telegram_observed
+🍄 | psilocybin mushrooms | emoji | telegram_observed
+🔌 | dealer/plug | emoji | telegram_observed
+🌿 | cannabis | emoji | telegram_observed
+💎 | crystal meth | emoji | telegram_observed
+🍫 | hash/chocolate | emoji | telegram_observed
+🧪 | chemical/drug lab | emoji | telegram_observed
+💉 | injectable drug | emoji | telegram_observed
+💨 | smoking/vaping | emoji | telegram_observed
+🔥 | hot/fire product | emoji | telegram_observed
+✅ | verified dealer | emoji | telegram_observed
+📦 | package/delivery | emoji | telegram_observed
+🏠 | house/drop point | emoji | telegram_observed
+📍 | location/pickup | emoji | telegram_observed
+⏰ | timed delivery | emoji | telegram_observed
+💰 | payment/price | emoji | telegram_observed
+🤝 | deal/transaction | emoji | telegram_observed
+⭐ | premium quality | emoji | telegram_observed
+🎯 | target/specific | emoji | telegram_observed
+🚨 | police/danger | emoji | telegram_observed
+🔒 | secure/safe | emoji | telegram_observed
+📱 | phone/telegram contact | emoji | telegram_observed
+💯 | pure/genuine | emoji | telegram_observed
+🎁 | gift/bonus | emoji | telegram_observed
+🏷️ | price tag | emoji | telegram_observed
+📦 | package | emoji | telegram_observed
+🧊 | ice/meth | emoji | telegram_observed
+🍭 | candy/MDMA | emoji | telegram_observed
+🍬 | sweets/pills | emoji | telegram_observed
+☕ | codeine drink | emoji | telegram_observed
+🫧 | bubbles/crack | emoji | telegram_observed
+🧂 | salt/bath salts | emoji | telegram_observed
+🧊 | ice/crystal | emoji | telegram_observed
+
+drvg | drugs | leetspeak | evasion
+dr ugs | drugs | leetspeak | evasion
+c0caine | cocaine | leetspeak | evasion
+h3roin | heroin | leetspeak | evasion
+md ma | MDMA | leetspeak | evasion
+m3th | meth | leetspeak | evasion
+k3tamine | ketamine | leetspeak | evasion
+x4nax | xanax | leetspeak | evasion
+f3ntanyl | fentanyl | leetspeak | evasion
+w33d | weed | leetspeak | evasion
+
+plug | dealer | en | telegram_observed
+connect | dealer contact | en | telegram_observed
+trap | drug house | en | telegram_observed
+stash | hidden supply | en | telegram_observed
+re-up | restock | en | telegram_observed
+flip | resell | en | telegram_observed
+tax | markup/fee | en | telegram_observed
+rip | scam/bad deal | en | telegram_observed
+fire | high quality | en | telegram_observed
+gas | high quality | en | telegram_observed
+zaza | exotic cannabis | en | telegram_observed
+pack | cannabis/product | en | telegram_observed
+cart | vape cartridge | en | telegram_observed
+pen | vape pen | en | telegram_observed
+dab | concentrate hit | en | telegram_observed
+eddie | edible | en | telegram_observed
+tripper | LSD user | en | telegram_observed
+raver | MDMA user | en | telegram_observed
+tweaker | meth user | en | telegram_observed
+junkie | heroin user | en | telegram_observed
+fiend | desperate user | en | telegram_observed
+sober | clean/not using | en | telegram_observed
+clean | no drugs/not using | en | telegram_observed
+dirty | using/has drugs | en | telegram_observed
+tested | lab tested | en | telegram_observed
+pure | uncut/pure product | en | telegram_observed
+cut | diluted/adulterated | en | telegram_observed
+stepped on | diluted | en | telegram_observed
+raw | unprocessed | en | telegram_observed
+cooked | processed | en | telegram_observed
+batch | production run | en | telegram_observed
+weight | large quantity | en | telegram_observed
+bulk | large quantity | en | telegram_observed
+dime | $10 worth | en | telegram_observed
+dub | $20 worth | en | telegram_observed
+eighth | 3.5 grams | en | telegram_observed
+quarter | 7 grams | en | telegram_observed
+half | 14 grams | en | telegram_observed
+zip | ounce (28g) | en | telegram_observed
+key | kilogram | en | telegram_observed
+brick | kilogram | en | telegram_observed

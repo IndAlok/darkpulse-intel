@@ -1,0 +1,95 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Adajan", "center": [72.7924, 21.2052] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7700, 21.1980], [72.8050, 21.1980], [72.8050, 21.2120], [72.7700, 21.2120], [72.7700, 21.1980]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Varachha", "center": [72.8350, 21.2000] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8200, 21.1940], [72.8550, 21.1940], [72.8550, 21.2080], [72.8200, 21.2080], [72.8200, 21.1940]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Katargam", "center": [72.8280, 21.2280] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8100, 21.2200], [72.8500, 21.2200], [72.8500, 21.2400], [72.8100, 21.2400], [72.8100, 21.2200]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Udhna", "center": [72.8650, 21.1680] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8450, 21.1580], [72.8850, 21.1580], [72.8850, 21.1780], [72.8450, 21.1780], [72.8450, 21.1580]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Piplod", "center": [72.7750, 21.1750] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7550, 21.1680], [72.7950, 21.1680], [72.7950, 21.1840], [72.7550, 21.1840], [72.7550, 21.1680]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Rander", "center": [72.7970, 21.2300] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7750, 21.2220], [72.8150, 21.2220], [72.8150, 21.2400], [72.7750, 21.2400], [72.7750, 21.2220]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Athwa", "center": [72.8120, 21.1900] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7950, 21.1840], [72.8300, 21.1840], [72.8300, 21.1980], [72.7950, 21.1980], [72.7950, 21.1840]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Vesu", "center": [72.7570, 21.1550] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7350, 21.1450], [72.7800, 21.1450], [72.7800, 21.1650], [72.7350, 21.1650], [72.7350, 21.1450]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Dumas", "center": [72.7230, 21.1580] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7000, 21.1480], [72.7450, 21.1480], [72.7450, 21.1680], [72.7000, 21.1680], [72.7000, 21.1480]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Pal", "center": [72.7480, 21.1850] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7300, 21.1780], [72.7700, 21.1780], [72.7700, 21.1940], [72.7300, 21.1940], [72.7300, 21.1780]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Godadara", "center": [72.8450, 21.2380] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8300, 21.2300], [72.8650, 21.2300], [72.8650, 21.2480], [72.8300, 21.2480], [72.8300, 21.2300]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Bamroli", "center": [72.8550, 21.2450] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8400, 21.2380], [72.8750, 21.2380], [72.8750, 21.2550], [72.8400, 21.2550], [72.8400, 21.2380]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Puna", "center": [72.8750, 21.1880] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8580, 21.1800], [72.8920, 21.1800], [72.8920, 21.1960], [72.8580, 21.1960], [72.8580, 21.1800]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Magob", "center": [72.8620, 21.2250] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8480, 21.2180], [72.8780, 21.2180], [72.8780, 21.2340], [72.8480, 21.2340], [72.8480, 21.2180]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Limbayat", "center": [72.8500, 21.1520] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.8350, 21.1420], [72.8680, 21.1420], [72.8680, 21.1620], [72.8350, 21.1620], [72.8350, 21.1420]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Sarthana", "center": [72.8150, 21.1500] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7950, 21.1400], [72.8350, 21.1400], [72.8350, 21.1600], [72.7950, 21.1600], [72.7950, 21.1400]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Citylight", "center": [72.7900, 21.1950] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7750, 21.1900], [72.8050, 21.1900], [72.8050, 21.2020], [72.7750, 21.2020], [72.7750, 21.1900]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Bhatar", "center": [72.8000, 21.1780] },
+      "geometry": { "type": "Polygon", "coordinates": [[[72.7820, 21.1720], [72.8180, 21.1720], [72.8180, 21.1860], [72.7820, 21.1860], [72.7820, 21.1720]]] }
+    }
+  ]
+}

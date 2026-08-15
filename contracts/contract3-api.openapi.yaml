@@ -1,0 +1,743 @@
+openapi: "3.1.0"
+info:
+  title: DarkPulse Investigator API
+  description: |
+    Contract 3 - API consumed by the investigator dashboard.
+    JSON responses use the envelope format: {data, pagination, meta, errors[]}.
+  version: "1.0.0"
+
+security:
+  - bearerAuth: []
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Local development
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Service health
+      tags: [Operations]
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/v1/health:
+    get:
+      operationId: getApiHealth
+      summary: Health with datastore and consumer status
+      tags: [Operations]
+      responses:
+        "200":
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailedHealthResponse"
+
+  /intel:
+    get:
+      operationId: listIntel
+      summary: Filtered intelligence feed
+      tags: [Intelligence]
+      parameters:
+        - name: product
+          in: query
+          schema: { type: string }
+        - name: neighborhood
+          in: query
+          schema: { type: string }
+        - name: severity_min
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 100 }
+        - name: band
+          in: query
+          schema: { type: string, enum: [info, low, medium, high, critical] }
+        - name: source_class
+          in: query
+          schema: { type: string }
+        - name: date_from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: vendor
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: Paginated intelligence feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /intel/{intel_id}:
+    get:
+      operationId: getIntelDetail
+      summary: Full intelligence detail
+      tags: [Intelligence]
+      parameters:
+        - name: intel_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Intelligence detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "404":
+          description: Record not found
+
+  /actors:
+    get:
+      operationId: listActors
+      summary: Vendor/actor profiles
+      tags: [Actors]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: Actor list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /actors/{actor_id}:
+    get:
+      operationId: getActorDetail
+      summary: Actor profile with activity timeline
+      tags: [Actors]
+      parameters:
+        - name: actor_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Actor detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "404":
+          description: Actor not found
+
+  /graph:
+    get:
+      operationId: getGraph
+      summary: Relationship subgraph
+      tags: [Graph]
+      parameters:
+        - name: center
+          in: query
+          schema: { type: string }
+        - name: depth
+          in: query
+          schema: { type: integer, default: 2, minimum: 1, maximum: 4 }
+        - name: node_type
+          in: query
+          schema: { type: string, default: Vendor, enum: [Vendor, Wallet, Product, Neighborhood, Market, IntelRef] }
+        - name: max_nodes
+          in: query
+          schema: { type: integer, default: 200, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Graph data (raw nodes + edges)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphData"
+
+  /search:
+    get:
+      operationId: search
+      summary: Multilingual full-text search
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 500 }
+        - name: lang
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /dashboards/trends:
+    get:
+      operationId: getTrends
+      summary: Activity trends over time
+      tags: [Dashboards]
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, enum: [7d, 30d, 90d], default: 30d }
+      responses:
+        "200":
+          description: Trend data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /dashboards/sources:
+    get:
+      operationId: getSourceRanking
+      summary: Source quality and volume ranking
+      tags: [Dashboards]
+      responses:
+        "200":
+          description: Source ranking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /dashboards/geo:
+    get:
+      operationId: getGeoData
+      summary: Neighborhood heatmap aggregation
+      tags: [Dashboards]
+      responses:
+        "200":
+          description: Geo heatmap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /operations/sources:
+    get:
+      operationId: listOperationsSources
+      summary: Administrator-only source registry posture
+      tags: [Operations]
+      responses:
+        "200":
+          description: Redacted source registry metadata, live collection remains CLI-only
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+
+  /operations/processing:
+    get:
+      operationId: getProcessingStatus
+      summary: Administrator-only processing-status counts
+      tags: [Operations]
+      responses:
+        "200":
+          description: Processing counts grouped by durable status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+
+  /operations/onion-review:
+    get:
+      operationId: getOnionReviewStatus
+      summary: Administrator-only redacted onion-review posture
+      tags: [Operations]
+      responses:
+        "200":
+          description: Counts and policy only, source details are redacted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+
+  /operations/audit:
+    get:
+      operationId: listOperationsAudit
+      summary: Administrator-only minimized audit log
+      tags: [Operations]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+      responses:
+        "200":
+          description: Attributed audit events without IP addresses or request payloads
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+
+  /watchlists:
+    get:
+      operationId: listWatchlists
+      summary: List watchlists
+      tags: [Watchlists]
+      responses:
+        "200":
+          description: Watchlist list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+    post:
+      operationId: createWatchlist
+      summary: Create a watchlist
+      tags: [Watchlists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WatchlistCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /slang:
+    get:
+      operationId: listSlang
+      summary: Slang dictionary entries
+      tags: [Slang]
+      parameters:
+        - name: lang
+          in: query
+          schema: { type: string }
+        - name: newly_discovered
+          in: query
+          schema: { type: boolean }
+        - name: review_status
+          in: query
+          schema: { type: string, enum: [pending, approved, rejected] }
+      responses:
+        "200":
+          description: Slang dictionary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+    post:
+      operationId: createSlangEntry
+      summary: Add a slang entry
+      tags: [Slang]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SlangEntry"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /slang/candidates:
+    get:
+      operationId: listSlangCandidates
+      summary: Auto-discovered slang candidates awaiting review
+      tags: [Slang]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: Candidate list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /slang/{slang_id}/approve:
+    post:
+      operationId: approveSlangCandidate
+      summary: Approve an auto-discovered slang candidate
+      tags: [Slang]
+      parameters:
+        - name: slang_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Approved entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "404":
+          description: Candidate not found
+
+  /slang/{slang_id}:
+    delete:
+      operationId: deleteSlangEntry
+      summary: Delete a slang entry
+      tags: [Slang]
+      parameters:
+        - name: slang_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Entry not found
+
+  /alerts/config:
+    get:
+      operationId: getAlertConfig
+      summary: Get alert rule configuration
+      tags: [Alerts]
+      responses:
+        "200":
+          description: Alert config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+    put:
+      operationId: updateAlertConfig
+      summary: Update alert rules
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertConfig"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /alerts/history:
+    get:
+      operationId: getAlertHistory
+      summary: Alert history
+      tags: [Alerts]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Alert history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /export:
+    get:
+      operationId: exportReport
+      summary: Export report with sealed evidence
+      tags: [Export]
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [csv, json, pdf], default: csv }
+        - name: intel_ids
+          in: query
+          schema: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Export file
+          content:
+            text/csv: {}
+            application/json: {}
+            application/pdf: {}
+
+  /evidence/seal:
+    post:
+      operationId: sealEvidence
+      summary: Seal an arbitrary payload
+      tags: [Evidence]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvidenceSealRequest"
+      responses:
+        "200":
+          description: Evidence seal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /evidence/{hash_sha256}:
+    get:
+      operationId: getEvidenceSeal
+      summary: Retrieve an evidence seal by SHA-256 hash
+      tags: [Evidence]
+      parameters:
+        - name: hash_sha256
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Evidence seal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+
+  /intel/{intel_id}/evidence:
+    get:
+      operationId: getIntelEvidence
+      summary: Retrieve a bounded, redacted evidence excerpt
+      tags: [Intelligence]
+      parameters:
+        - name: intel_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Evidence excerpt and integrity metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+
+  /watchlists/{watchlist_id}:
+    put:
+      operationId: updateWatchlist
+      summary: Update or pause a watchlist
+      tags: [Watchlists]
+      parameters: [{ name: watchlist_id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Updated watchlist } }
+    delete:
+      operationId: deleteWatchlist
+      summary: Delete a watchlist
+      tags: [Watchlists]
+      parameters: [{ name: watchlist_id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Deleted } }
+
+  /slang/{slang_id}:
+    put:
+      operationId: updateSlangEntry
+      summary: Update or review a slang entry
+      tags: [Slang]
+      parameters: [{ name: slang_id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Updated slang entry } }
+    delete:
+      operationId: deleteSlangEntry
+      summary: Delete a slang entry
+      tags: [Slang]
+      parameters: [{ name: slang_id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Deleted } }
+
+  /evidence/verify:
+    get:
+      operationId: verifyEvidenceChain
+      summary: Verify hash-chain integrity of the evidence ledger
+      tags: [Evidence]
+      responses:
+        "200":
+          description: Chain verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+    post:
+      operationId: verifyEvidencePayload
+      summary: Verify a payload against a claimed seal hash
+      tags: [Evidence]
+      responses:
+        "200":
+          description: Payload verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /alerts/ws:
+    get:
+      operationId: alertWebSocket
+      summary: Live alert WebSocket stream
+      tags: [Alerts]
+      responses:
+        "101":
+          description: WebSocket upgrade
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API token
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        data: {}
+        pagination:
+          type: object
+          properties:
+            cursor: { type: string, nullable: true }
+            limit: { type: integer }
+            total: { type: integer }
+        meta:
+          type: object
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              message: { type: string }
+              trace_id: { type: string, nullable: true }
+
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string }
+        service: { type: string }
+        version: { type: string }
+
+    DetailedHealthResponse:
+      type: object
+      properties:
+        status: { type: string }
+        services:
+          type: object
+          additionalProperties:
+            type: object
+
+    GraphData:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label: { type: string }
+              type: { type: string }
+              properties: { type: object }
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              source: { type: string }
+              target: { type: string }
+              relation: { type: string }
+              confidence: { type: number }
+        truncated: { type: boolean }
+        limits: { type: object, additionalProperties: { type: integer } }
+
+    WatchlistCreate:
+      type: object
+      required: [name, terms]
+      properties:
+        name: { type: string }
+        terms: { type: array, items: { type: string } }
+        notify: { type: boolean, default: true }
+
+    WatchlistResponse:
+      allOf:
+        - $ref: "#/components/schemas/WatchlistCreate"
+        - type: object
+          required: [id, enabled]
+          properties:
+            id: { type: string }
+            enabled: { type: boolean }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    SlangEntry:
+      type: object
+      required: [term, meaning]
+      properties:
+        term: { type: string }
+        meaning: { type: string }
+        lang: { type: string, default: en }
+        confidence: { type: number, default: 1.0 }
+        newly_discovered: { type: boolean, default: false }
+        review_status: { type: string, enum: [pending, approved, rejected] }
+
+    SlangResponse:
+      allOf:
+        - $ref: "#/components/schemas/SlangEntry"
+        - type: object
+          required: [id, review_status]
+          properties:
+            id: { type: string }
+            review_status: { type: string, enum: [pending, approved, rejected] }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    AlertConfig:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              severity_min: { type: integer, default: 0 }
+              products: { type: array, items: { type: string } }
+              neighborhoods: { type: array, items: { type: string } }
+              enabled: { type: boolean, default: true }
+
+    EvidenceSealRequest:
+      type: object
+      required: [payload]
+      properties:
+        payload: { type: string }
+
+    EvidenceSealResponse:
+      type: object
+      properties:
+        hash_sha256: { type: string }
+        tsa_token: { type: string }
+        tsa_verified: { type: boolean }
+        sealed_at: { type: integer }
+        provenance: { type: string }
+        previous_hash: { type: string, nullable: true }

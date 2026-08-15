@@ -1,0 +1,20 @@
+{
+  "policy_version": "prepublish-v1",
+  "max_source_bytes": 2000000,
+  "max_content_bytes": 2000000,
+  "allowed_content_types": ["html", "text", "json", "message"],
+  "allowed_mime_types": [
+    "application/atom+xml",
+    "application/json",
+    "application/rss+xml",
+    "application/xhtml+xml",
+    "application/xml",
+    "text/html",
+    "text/plain",
+    "text/tab-separated-values",
+    "text/xml"
+  ],
+  "blocked_source_prefixes": [],
+  "blocked_source_sha256": [],
+  "blocked_content_sha256": []
+}

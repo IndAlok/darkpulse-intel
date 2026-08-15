@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkpulse.local/contracts/contract1-raw-ingest.v1.schema.json",
+  "title": "RawIngest",
+  "description": "Contract 1 - raw ingest record produced by collection and consumed by the NLP pipeline and storage.",
+  "type": "object",
+  "additionalProperties": false,
+  
+  "required": [
+    "schema_version",
+    "ingest_id",
+    "trace_id",
+    "dedup_key",
+    "source_class",
+    "source_ref",
+    "content_type",
+    "raw_content",
+    "captured_at",
+    "evidence",
+    "safety"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ingest_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "trace_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "dedup_key": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "source_class": {
+      "type": "string",
+      "enum": [
+        "dnm_dataset",
+        "tor_market",
+        "tor_forum",
+        "telegram",
+        "surface_market",
+        "social",
+        "paste",
+        "i2p"
+      ]
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Sanitized source locator with credentials and secret query values removed."
+    },
+    "content_type": {
+      "type": "string",
+      "enum": ["html", "text", "json", "message"]
+    },
+    "raw_content": {
+      "type": "string",
+      "maxLength": 2000000,
+      "description": "Accepted text passed to D2. Binary content is never included."
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_observed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Timestamp supplied by the source, such as a scrape or message time."
+    },
+    "lang_hint": {
+      "type": ["string", "null"],
+      "maxLength": 32
+    },
+    "geo_hints": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "default": []
+    },
+    "crawl_metadata": {
+      "$ref": "#/$defs/crawlMetadata"
+    },
+    "source_metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "integer", "boolean", "null"]
+      },
+      "default": {}
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "safety": {
+      "$ref": "#/$defs/safety"
+    }
+  },
+  "$defs": {
+    "crawlMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_item_id": {
+          "type": ["string", "null"],
+          "maxLength": 512
+        },
+        "status_code": {
+          "type": ["integer", "null"],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "latency_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "proxy_instance": {
+          "type": ["string", "null"],
+          "maxLength": 200
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hash_algorithm",
+        "source_sha256",
+        "content_sha256",
+        "source_size_bytes",
+        "content_size_bytes",
+        "captured_at",
+        "collector_id",
+        "collector_version"
+      ],
+      "properties": {
+        "hash_algorithm": {
+          "const": "sha256"
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "source_size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "content_size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "collector_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "collector_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "policy_version",
+        "checks",
+        "binary_content_stored"
+      ],
+      "properties": {
+        "status": {
+          "const": "accepted"
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "binary_content_stored": {
+          "const": false
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+lid	vid	mscrape_id	title	price	description	cid	ships_from	ships_to	product_class	listing_available	return_policy
+101	501	1	Example listing one	0.0100	Fixture description one	12	Region A	Worldwide	fixture	1	No returns
+102	502	2	Example listing two	0.0200	Fixture description two	13	Region B	Region C	fixture	1	Not stated

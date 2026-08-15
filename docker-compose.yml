@@ -1,0 +1,269 @@
+name: darkpulse
+
+networks:
+  darkpulse:
+    driver: bridge
+
+volumes:
+  redis_data:
+  mongo_data:
+  neo4j_data:
+  neo4j_logs:
+  prometheus_data:
+  grafana_data:
+
+services:
+  redis:
+    image: redis:7.4.9-alpine
+    profiles: ["core"]
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:16379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - darkpulse
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7.0
+    profiles: ["core"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: darkpulse
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - darkpulse
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.18-community
+    profiles: ["core"]
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - darkpulse
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  backend:
+    image: darkpulse:1.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["core"]
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "127.0.0.1:8003:8080"
+    environment:
+      DARKPULSE_ENVIRONMENT: ${DARKPULSE_ENVIRONMENT:-development}
+      DARKPULSE_LOG_LEVEL: ${DARKPULSE_LOG_LEVEL:-INFO}
+      DARKPULSE_API_PORT: 8080
+      DARKPULSE_FRONTEND_ORIGIN: ${DARKPULSE_FRONTEND_ORIGIN:-http://localhost:5173}
+      DARKPULSE_AUTH_ENABLED: ${DARKPULSE_AUTH_ENABLED:-false}
+      DARKPULSE_AUTH_TOKENS_JSON: ${DARKPULSE_AUTH_TOKENS_JSON:-}
+      DARKPULSE_REDIS_URL: ${DARKPULSE_REDIS_URL:-redis://redis:6379/0}
+      DARKPULSE_MONGODB_URI: mongodb://mongodb:27017
+      DARKPULSE_MONGODB_DATABASE: darkpulse
+      DARKPULSE_NEO4J_URI: bolt://neo4j:7687
+      DARKPULSE_NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}
+      DARKPULSE_CONTRACT_PATH: /app/contracts/contract1-raw-ingest.schema.json
+      DARKPULSE_SAFETY_POLICY_PATH: /app/safety/policy/prepublish-v1.json
+      DARKPULSE_SLANG_SEED_PATH: /app/data/slang_dictionary/seed_dictionary.txt
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    networks:
+      - darkpulse
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/runtime
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  evolution-loader:
+    image: darkpulse:1.0.0
+    profiles: ["loader"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DARKPULSE_REDIS_URL: ${DARKPULSE_REDIS_URL:-redis://redis:6379/0}
+      DARKPULSE_MONGODB_URI: mongodb://mongodb:27017
+      DARKPULSE_MONGODB_DATABASE: darkpulse
+      DARKPULSE_CONTRACT_PATH: /app/contracts/contract1-raw-ingest.schema.json
+      DARKPULSE_SAFETY_POLICY_PATH: /app/safety/policy/prepublish-v1.json
+    command:
+      - python
+      - -m
+      - darkpulse.cli
+      - evolution
+      - --input
+      - /data/market/listings.tsv
+      - --scrapes
+      - /data/market/scrapes.tsv
+      - --limit
+      - ${EVOLUTION_LIMIT:-1000}
+    volumes:
+      - type: bind
+        source: ${EVOLUTION_DATASET_DIR:-./data/evolution}
+        target: /data
+        read_only: true
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - darkpulse
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: "no"
+
+  collector:
+    image: darkpulse:1.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["core"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DARKPULSE_REDIS_URL: ${DARKPULSE_REDIS_URL:-redis://redis:6379/0}
+      DARKPULSE_MONGODB_URI: mongodb://mongodb:27017
+      DARKPULSE_MONGODB_DATABASE: darkpulse
+      DARKPULSE_CONTRACT_PATH: /app/contracts/contract1-raw-ingest.schema.json
+      DARKPULSE_SAFETY_POLICY_PATH: /app/safety/policy/prepublish-v1.json
+      DARKPULSE_SOURCES_PATH: /app/config/sources.json
+      DARKPULSE_ONION_REVIEW_POLICY_PATH: /app/config/onion-review.json
+      COLLECT_INTERVAL: ${COLLECT_INTERVAL:-300}
+    command:
+      - python
+      - -m
+      - darkpulse.cli
+      - collect-all
+      - --loop
+      - --interval
+      - "300"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - darkpulse
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/runtime
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  frontend:
+    image: darkpulse-frontend:1.0.0
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+        VITE_API_TOKEN: ${VITE_API_TOKEN:-}
+    environment:
+      BACKEND_UPSTREAM: http://backend:8080
+    profiles: ["core"]
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - darkpulse
+    restart: unless-stopped
+
+  tor:
+    image: dperson/torproxy:0.5.0
+    profiles: ["tor"]
+    ports:
+      - "127.0.0.1:9050:9050"
+    networks:
+      - darkpulse
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+    networks:
+      - darkpulse
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.1
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in .env}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - darkpulse
+    restart: unless-stopped

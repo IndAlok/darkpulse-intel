@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkpulse.local/contracts/contract2-intel.v1.schema.json",
+  "title": "TraffickingIntel",
+  "description": "Contract 2 - Structured trafficking intelligence, produced by Dev2 (NLP/Slang) and consumed by Dev3 (Backend). Contains decoded slang, NER entities, intent classification, geo-localization, severity scoring, and actor-link signals.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intel_id",
+    "ingest_id",
+    "captured_at",
+    "sanitization",
+    "intent",
+    "severity",
+    "confidence"
+  ],
+  "properties": {
+    "intel_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique intelligence record identifier"
+    },
+    "ingest_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Back-reference to the Contract 1 ingest record"
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "OpenTelemetry-compatible trace ID threaded from Contract 1"
+    },
+    "source_class": {
+      "type": "string"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "content_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the processed content for integrity verification"
+    },
+    "language": {
+      "type": "object",
+      "properties": {
+        "detected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "ISO 639 language codes detected in the content"
+        },
+        "code_mixed": {
+          "type": "boolean",
+          "description": "True if multiple languages are mixed within the text"
+        },
+        "romanized": {
+          "type": "boolean",
+          "description": "True if non-Latin script languages appear in romanized form"
+        }
+      }
+    },
+    "sanitization": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["clean", "sanitized", "dropped"]
+        },
+        "detectors_fired": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "illegal_flag": {
+          "type": "boolean"
+        }
+      }
+    },
+    "translated_text": {
+      "type": "string",
+      "description": "Normalized English for indexing (original retained separately)"
+    },
+    "intent": {
+      "type": "object",
+      "required": ["label", "score"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "enum": ["sale", "solicitation", "discussion", "review", "unrelated"]
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "canonical": {
+            "type": "string",
+            "description": "Canonical product name, e.g. MDMA, mephedrone, LSD"
+          },
+          "raw_term": {
+            "type": "string",
+            "description": "The original term as found in the text"
+          },
+          "slang": {
+            "type": "boolean",
+            "description": "True if raw_term is a slang/euphemism"
+          },
+          "quantity": { "type": "string" },
+          "price": { "type": "string" }
+        }
+      }
+    },
+    "slang_decoded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "term": { "type": "string" },
+          "meaning": { "type": "string" },
+          "lang": {
+            "type": "string",
+            "description": "Language of the slang term (en/hi/gu/hinglish)"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "newly_discovered": {
+            "type": "boolean",
+            "description": "True if this term was auto-discovered (not in curated dictionary)"
+          }
+        }
+      }
+    },
+    "geo": {
+      "type": "object",
+      "properties": {
+        "neighborhood": {
+          "type": "string",
+          "description": "Surat locality, e.g. Adajan, Varachha, Katargam, Udhna"
+        },
+        "city": { "type": "string" },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "basis": {
+          "type": "string",
+          "enum": ["explicit", "slang", "ship_from", "inference"],
+          "description": "How the geo-location was determined"
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "properties": {
+        "vendors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "alias": { "type": "string" },
+              "platform": { "type": "string" }
+            }
+          }
+        },
+        "buyers": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "crypto_wallets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chain": {
+                "type": "string",
+                "description": "Blockchain network (BTC, ETH, XMR, etc.)"
+              },
+              "address": { "type": "string" }
+            }
+          }
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "telegram",
+                  "wickr",
+                  "signal",
+                  "email",
+                  "phone_redacted",
+                  "pgp"
+                ]
+              },
+              "value_redacted": { "type": "string" }
+            }
+          }
+        },
+        "pgp_fingerprints": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "actor_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "same_as",
+              "sells_to",
+              "vends_on",
+              "uses_wallet",
+              "co_posts",
+              "ships_from"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "severity": {
+      "type": "object",
+      "required": ["score", "band"],
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "band": {
+          "type": "string",
+          "enum": ["info", "low", "medium", "high", "critical"]
+        },
+        "factors": {
+          "type": "object",
+          "description": "Explainable severity factor breakdown"
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Overall confidence in this intelligence record"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "evidence_ref": {
+      "type": "string",
+      "description": "Pointer to the sealed evidence record in the D3 evidence ledger"
+    }
+  }
+}
