@@ -10,7 +10,7 @@ import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from prometheus_client import Counter, Histogram, start_http_server
 
 from darkpulse.api.rate_limit import enforce_write_rate_limit
@@ -243,6 +243,14 @@ async def method_not_allowed_handler(request: Request, exc: Exception) -> JSONRe
     return _error_response(
         request, status_code=405, code="method_not_allowed", message="Method not allowed"
     )
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    target = get_settings().service.frontend_origin
+    if target.startswith("http"):
+        return RedirectResponse(target, status_code=302)
+    return RedirectResponse("/health", status_code=302)
 
 
 @app.get("/health")

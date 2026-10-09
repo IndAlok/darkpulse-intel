@@ -19,7 +19,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY docker-entrypoint.sh /darkpulse-entrypoint.sh
 
 RUN printf 'server {\n\
-  listen 5173;\n\
+  listen __PORT__;\n\
   root /usr/share/nginx/html;\n\
   index index.html;\n\
   resolver __RESOLVER__ valid=10s;\n\
