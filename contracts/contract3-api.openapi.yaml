@@ -1,743 +1,1835 @@
-openapi: "3.1.0"
+openapi: 3.1.0
 info:
   title: DarkPulse Investigator API
-  description: |
-    Contract 3 - API consumed by the investigator dashboard.
-    JSON responses use the envelope format: {data, pagination, meta, errors[]}.
-  version: "1.0.0"
-
-security:
-  - bearerAuth: []
-
-servers:
-  - url: http://localhost:8003/api/v1
-    description: Local development
-
+  version: 1.0.0
 paths:
-  /health:
-    get:
-      operationId: getHealth
-      summary: Service health
-      tags: [Operations]
+  /auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Login
+      operationId: login_api_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
       responses:
-        "200":
-          description: Health status
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-
-  /api/v1/health:
-    get:
-      operationId: getApiHealth
-      summary: Health with datastore and consumer status
-      tags: [Operations]
-      responses:
-        "200":
-          description: Detailed health status
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DetailedHealthResponse"
-
+                $ref: '#/components/schemas/HTTPValidationError'
+  /auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: Logout
+      operationId: logout_api_v1_auth_logout_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /auth/refresh:
+    post:
+      tags:
+      - Auth
+      summary: Refresh
+      operationId: refresh_api_v1_auth_refresh_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Me
+      operationId: me_api_v1_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
   /intel:
     get:
-      operationId: listIntel
-      summary: Filtered intelligence feed
-      tags: [Intelligence]
+      tags:
+      - Intelligence
+      summary: List Intel
+      operationId: list_intel_api_v1_intel_get
+      security:
+      - HTTPBearer: []
       parameters:
-        - name: product
-          in: query
-          schema: { type: string }
-        - name: neighborhood
-          in: query
-          schema: { type: string }
-        - name: severity_min
-          in: query
-          schema: { type: integer, minimum: 0, maximum: 100 }
-        - name: band
-          in: query
-          schema: { type: string, enum: [info, low, medium, high, critical] }
-        - name: source_class
-          in: query
-          schema: { type: string }
-        - name: date_from
-          in: query
-          schema: { type: string, format: date-time }
-        - name: date_to
-          in: query
-          schema: { type: string, format: date-time }
-        - name: vendor
-          in: query
-          schema: { type: string }
-        - name: q
-          in: query
-          schema: { type: string }
-        - name: cursor
-          in: query
-          schema: { type: string }
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50, maximum: 200 }
+      - name: product
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Product
+      - name: neighborhood
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Neighborhood
+      - name: severity_min
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: Severity Min
+      - name: band
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Band
+      - name: source_class
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Class
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Date To
+      - name: vendor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Vendor
+      - name: intel_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Intel Id
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
       responses:
-        "200":
-          description: Paginated intelligence feed
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
-
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /intel/{intel_id}:
     get:
-      operationId: getIntelDetail
-      summary: Full intelligence detail
-      tags: [Intelligence]
+      tags:
+      - Intelligence
+      summary: Get Intel
+      operationId: get_intel_api_v1_intel__intel_id__get
+      security:
+      - HTTPBearer: []
       parameters:
-        - name: intel_id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Intelligence detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "404":
-          description: Record not found
-
-  /actors:
-    get:
-      operationId: listActors
-      summary: Vendor/actor profiles
-      tags: [Actors]
-      parameters:
-        - name: q
-          in: query
-          schema: { type: string }
-        - name: cursor
-          in: query
-          schema: { type: string }
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50, maximum: 200 }
-      responses:
-        "200":
-          description: Actor list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /actors/{actor_id}:
-    get:
-      operationId: getActorDetail
-      summary: Actor profile with activity timeline
-      tags: [Actors]
-      parameters:
-        - name: actor_id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Actor detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "404":
-          description: Actor not found
-
-  /graph:
-    get:
-      operationId: getGraph
-      summary: Relationship subgraph
-      tags: [Graph]
-      parameters:
-        - name: center
-          in: query
-          schema: { type: string }
-        - name: depth
-          in: query
-          schema: { type: integer, default: 2, minimum: 1, maximum: 4 }
-        - name: node_type
-          in: query
-          schema: { type: string, default: Vendor, enum: [Vendor, Wallet, Product, Neighborhood, Market, IntelRef] }
-        - name: max_nodes
-          in: query
-          schema: { type: integer, default: 200, minimum: 1, maximum: 500 }
-      responses:
-        "200":
-          description: Graph data (raw nodes + edges)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GraphData"
-
-  /search:
-    get:
-      operationId: search
-      summary: Multilingual full-text search
-      tags: [Search]
-      parameters:
-        - name: q
-          in: query
-          required: true
-          schema: { type: string, minLength: 1, maxLength: 500 }
-        - name: lang
-          in: query
-          schema: { type: string }
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50, maximum: 200 }
-      responses:
-        "200":
-          description: Search results
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /dashboards/trends:
-    get:
-      operationId: getTrends
-      summary: Activity trends over time
-      tags: [Dashboards]
-      parameters:
-        - name: period
-          in: query
-          schema: { type: string, enum: [7d, 30d, 90d], default: 30d }
-      responses:
-        "200":
-          description: Trend data
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /dashboards/sources:
-    get:
-      operationId: getSourceRanking
-      summary: Source quality and volume ranking
-      tags: [Dashboards]
-      responses:
-        "200":
-          description: Source ranking
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /dashboards/geo:
-    get:
-      operationId: getGeoData
-      summary: Neighborhood heatmap aggregation
-      tags: [Dashboards]
-      responses:
-        "200":
-          description: Geo heatmap
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /operations/sources:
-    get:
-      operationId: listOperationsSources
-      summary: Administrator-only source registry posture
-      tags: [Operations]
-      responses:
-        "200":
-          description: Redacted source registry metadata, live collection remains CLI-only
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Envelope" }
-
-  /operations/processing:
-    get:
-      operationId: getProcessingStatus
-      summary: Administrator-only processing-status counts
-      tags: [Operations]
-      responses:
-        "200":
-          description: Processing counts grouped by durable status
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Envelope" }
-
-  /operations/onion-review:
-    get:
-      operationId: getOnionReviewStatus
-      summary: Administrator-only redacted onion-review posture
-      tags: [Operations]
-      responses:
-        "200":
-          description: Counts and policy only, source details are redacted
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Envelope" }
-
-  /operations/audit:
-    get:
-      operationId: listOperationsAudit
-      summary: Administrator-only minimized audit log
-      tags: [Operations]
-      parameters:
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
-      responses:
-        "200":
-          description: Attributed audit events without IP addresses or request payloads
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Envelope" }
-
-  /watchlists:
-    get:
-      operationId: listWatchlists
-      summary: List watchlists
-      tags: [Watchlists]
-      responses:
-        "200":
-          description: Watchlist list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-    post:
-      operationId: createWatchlist
-      summary: Create a watchlist
-      tags: [Watchlists]
-      requestBody:
+      - name: intel_id
+        in: path
         required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WatchlistCreate"
+        schema:
+          type: string
+          title: Intel Id
       responses:
-        "201":
-          description: Created
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /slang:
-    get:
-      operationId: listSlang
-      summary: Slang dictionary entries
-      tags: [Slang]
-      parameters:
-        - name: lang
-          in: query
-          schema: { type: string }
-        - name: newly_discovered
-          in: query
-          schema: { type: boolean }
-        - name: review_status
-          in: query
-          schema: { type: string, enum: [pending, approved, rejected] }
-      responses:
-        "200":
-          description: Slang dictionary
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
-    post:
-      operationId: createSlangEntry
-      summary: Add a slang entry
-      tags: [Slang]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SlangEntry"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /slang/candidates:
-    get:
-      operationId: listSlangCandidates
-      summary: Auto-discovered slang candidates awaiting review
-      tags: [Slang]
-      parameters:
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50, maximum: 200 }
-      responses:
-        "200":
-          description: Candidate list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /slang/{slang_id}/approve:
-    post:
-      operationId: approveSlangCandidate
-      summary: Approve an auto-discovered slang candidate
-      tags: [Slang]
-      parameters:
-        - name: slang_id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Approved entry
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "404":
-          description: Candidate not found
-
-  /slang/{slang_id}:
-    delete:
-      operationId: deleteSlangEntry
-      summary: Delete a slang entry
-      tags: [Slang]
-      parameters:
-        - name: slang_id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "204":
-          description: Deleted
-        "404":
-          description: Entry not found
-
-  /alerts/config:
-    get:
-      operationId: getAlertConfig
-      summary: Get alert rule configuration
-      tags: [Alerts]
-      responses:
-        "200":
-          description: Alert config
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-    put:
-      operationId: updateAlertConfig
-      summary: Update alert rules
-      tags: [Alerts]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AlertConfig"
-      responses:
-        "200":
-          description: Updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /alerts/history:
-    get:
-      operationId: getAlertHistory
-      summary: Alert history
-      tags: [Alerts]
-      parameters:
-        - name: cursor
-          in: query
-          schema: { type: string }
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50 }
-      responses:
-        "200":
-          description: Alert history
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /export:
-    get:
-      operationId: exportReport
-      summary: Export report with sealed evidence
-      tags: [Export]
-      parameters:
-        - name: format
-          in: query
-          schema: { type: string, enum: [csv, json, pdf], default: csv }
-        - name: intel_ids
-          in: query
-          schema: { type: array, items: { type: string } }
-      responses:
-        "200":
-          description: Export file
-          content:
-            text/csv: {}
-            application/json: {}
-            application/pdf: {}
-
-  /evidence/seal:
-    post:
-      operationId: sealEvidence
-      summary: Seal an arbitrary payload
-      tags: [Evidence]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EvidenceSealRequest"
-      responses:
-        "200":
-          description: Evidence seal
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /evidence/{hash_sha256}:
-    get:
-      operationId: getEvidenceSeal
-      summary: Retrieve an evidence seal by SHA-256 hash
-      tags: [Evidence]
-      parameters:
-        - name: hash_sha256
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Evidence seal
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Envelope" }
-
+                $ref: '#/components/schemas/HTTPValidationError'
   /intel/{intel_id}/evidence:
     get:
-      operationId: getIntelEvidence
-      summary: Retrieve a bounded, redacted evidence excerpt
-      tags: [Intelligence]
+      tags:
+      - Intelligence
+      summary: Get Intel Evidence
+      operationId: get_intel_evidence_api_v1_intel__intel_id__evidence_get
+      security:
+      - HTTPBearer: []
       parameters:
-        - name: intel_id
-          in: path
-          required: true
-          schema: { type: string }
+      - name: intel_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Intel Id
       responses:
-        "200":
-          description: Evidence excerpt and integrity metadata
+        '200':
+          description: Successful Response
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Envelope" }
-
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /actors:
+    get:
+      tags:
+      - Actors
+      summary: List Actors
+      operationId: list_actors_api_v1_actors_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /actors/{actor_id}:
+    get:
+      tags:
+      - Actors
+      summary: Get Actor
+      operationId: get_actor_api_v1_actors__actor_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: actor_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Actor Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /graph:
+    get:
+      tags:
+      - Graph
+      summary: Get Graph
+      operationId: get_graph_api_v1_graph_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: center
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Center
+      - name: depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 4
+          minimum: 1
+          default: 2
+          title: Depth
+      - name: node_type
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(Vendor|Wallet|Product|Neighborhood|Market|IntelRef)$
+          default: Vendor
+          title: Node Type
+      - name: max_nodes
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 200
+          title: Max Nodes
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphData'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /search:
+    get:
+      tags:
+      - Search
+      summary: Search
+      operationId: search_api_v1_search_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 500
+          title: Q
+      - name: lang
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 8
+          - type: 'null'
+          title: Lang
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /dashboards/trends:
+    get:
+      tags:
+      - Dashboards
+      summary: Get Trends
+      operationId: get_trends_api_v1_dashboards_trends_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: period
+        in: query
+        required: false
+        schema:
+          type: string
+          default: 30d
+          title: Period
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /dashboards/sources:
+    get:
+      tags:
+      - Dashboards
+      summary: Get Sources
+      operationId: get_sources_api_v1_dashboards_sources_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /dashboards/geo:
+    get:
+      tags:
+      - Dashboards
+      summary: Get Geo
+      operationId: get_geo_api_v1_dashboards_geo_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /watchlists:
+    get:
+      tags:
+      - Watchlists
+      summary: List Watchlists
+      operationId: list_watchlists_api_v1_watchlists_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchlistListResponse'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - Watchlists
+      summary: Create Watchlist
+      operationId: create_watchlist_api_v1_watchlists_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /watchlists/{watchlist_id}:
     put:
-      operationId: updateWatchlist
-      summary: Update or pause a watchlist
-      tags: [Watchlists]
-      parameters: [{ name: watchlist_id, in: path, required: true, schema: { type: string } }]
-      responses: { "200": { description: Updated watchlist } }
+      tags:
+      - Watchlists
+      summary: Update Watchlist
+      operationId: update_watchlist_api_v1_watchlists__watchlist_id__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: watchlist_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Watchlist Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      operationId: deleteWatchlist
-      summary: Delete a watchlist
-      tags: [Watchlists]
-      parameters: [{ name: watchlist_id, in: path, required: true, schema: { type: string } }]
-      responses: { "204": { description: Deleted } }
-
+      tags:
+      - Watchlists
+      summary: Delete Watchlist
+      operationId: delete_watchlist_api_v1_watchlists__watchlist_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: watchlist_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Watchlist Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /slang:
+    get:
+      tags:
+      - Slang
+      summary: List Slang
+      operationId: list_slang_api_v1_slang_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: lang
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lang
+      - name: newly_discovered
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Newly Discovered
+      - name: review_status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Review Status
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlangListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Slang
+      summary: Create Slang Entry
+      operationId: create_slang_entry_api_v1_slang_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlangEntry'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /slang/candidates:
+    get:
+      tags:
+      - Slang
+      summary: List Candidates
+      operationId: list_candidates_api_v1_slang_candidates_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlangListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /slang/{slang_id}:
     put:
-      operationId: updateSlangEntry
-      summary: Update or review a slang entry
-      tags: [Slang]
-      parameters: [{ name: slang_id, in: path, required: true, schema: { type: string } }]
-      responses: { "200": { description: Updated slang entry } }
+      tags:
+      - Slang
+      summary: Update Slang Entry
+      operationId: update_slang_entry_api_v1_slang__slang_id__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: slang_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Slang Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlangUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      operationId: deleteSlangEntry
-      summary: Delete a slang entry
-      tags: [Slang]
-      parameters: [{ name: slang_id, in: path, required: true, schema: { type: string } }]
-      responses: { "204": { description: Deleted } }
-
+      tags:
+      - Slang
+      summary: Delete Slang Entry
+      operationId: delete_slang_entry_api_v1_slang__slang_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: slang_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Slang Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /slang/{slang_id}/approve:
+    post:
+      tags:
+      - Slang
+      summary: Approve Candidate
+      operationId: approve_candidate_api_v1_slang__slang_id__approve_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: slang_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Slang Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /slang/{slang_id}/reject:
+    post:
+      tags:
+      - Slang
+      summary: Reject Candidate
+      operationId: reject_candidate_api_v1_slang__slang_id__reject_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: slang_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Slang Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /alerts/config:
+    get:
+      tags:
+      - Alerts
+      summary: Get Alert Config
+      operationId: get_alert_config_api_v1_alerts_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+    put:
+      tags:
+      - Alerts
+      summary: Update Alert Config
+      operationId: update_alert_config_api_v1_alerts_config_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertConfig'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /alerts/history:
+    get:
+      tags:
+      - Alerts
+      summary: Get Alert History
+      operationId: get_alert_history_api_v1_alerts_history_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertHistoryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /alerts/history/{alert_id}:
+    patch:
+      tags:
+      - Alerts
+      summary: Patch Alert
+      operationId: patch_alert_api_v1_alerts_history__alert_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Alert Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /alerts/ws-ticket:
+    post:
+      tags:
+      - Alerts
+      summary: Ws Ticket
+      operationId: ws_ticket_api_v1_alerts_ws_ticket_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /export:
+    post:
+      tags:
+      - Export
+      summary: Export Report
+      operationId: export_report_api_v1_export_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(pdf|csv|json)$
+          default: csv
+          title: Format
+      - name: intel_ids
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+          default: []
+          title: Intel Ids
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /export/manifest/{seal_hash}:
+    get:
+      tags:
+      - Export
+      summary: Get Manifest
+      operationId: get_manifest_api_v1_export_manifest__seal_hash__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: seal_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Seal Hash
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Manifest Api V1 Export Manifest  Seal Hash  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /evidence/seal:
+    post:
+      tags:
+      - Evidence
+      summary: Seal Evidence
+      operationId: seal_evidence_api_v1_evidence_seal_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceSealRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /evidence/verify:
     get:
-      operationId: verifyEvidenceChain
-      summary: Verify hash-chain integrity of the evidence ledger
-      tags: [Evidence]
+      tags:
+      - Evidence
+      summary: Verify Chain
+      operationId: verify_chain_api_v1_evidence_verify_get
       responses:
-        "200":
-          description: Chain verification result
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                additionalProperties: true
+                type: object
+                title: Response Verify Chain Api V1 Evidence Verify Get
+      security:
+      - HTTPBearer: []
     post:
-      operationId: verifyEvidencePayload
-      summary: Verify a payload against a claimed seal hash
-      tags: [Evidence]
+      tags:
+      - Evidence
+      summary: Verify Payload
+      operationId: verify_payload_api_v1_evidence_verify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceVerifyRequest'
+        required: true
       responses:
-        "200":
-          description: Payload verification result
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
-
+                additionalProperties: true
+                type: object
+                title: Response Verify Payload Api V1 Evidence Verify Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /evidence/{hash_sha256}:
+    get:
+      tags:
+      - Evidence
+      summary: Get Evidence Seal
+      operationId: get_evidence_seal_api_v1_evidence__hash_sha256__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: hash_sha256
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Hash Sha256
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /operations/sources:
+    get:
+      tags:
+      - Operations
+      summary: List Sources
+      operationId: list_sources_api_v1_operations_sources_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /operations/processing:
+    get:
+      tags:
+      - Operations
+      summary: Processing Status
+      operationId: processing_status_api_v1_operations_processing_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /operations/onion-review:
+    get:
+      tags:
+      - Operations
+      summary: Onion Review Status
+      operationId: onion_review_status_api_v1_operations_onion_review_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+      security:
+      - HTTPBearer: []
+  /operations/audit:
+    get:
+      tags:
+      - Operations
+      summary: List Operations Audit
+      operationId: list_operations_audit_api_v1_operations_audit_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /operations/collection-runs:
+    get:
+      tags:
+      - Operations
+      summary: List Collection Runs
+      operationId: list_collection_runs_api_v1_operations_collection_runs_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /operations/dead-letter/{ingest_id}/retry:
+    post:
+      tags:
+      - Operations
+      summary: Retry Dead Letter
+      operationId: retry_dead_letter_api_v1_operations_dead_letter__ingest_id__retry_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: ingest_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Ingest Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      summary: Api Health
+      operationId: api_health_api_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
   /alerts/ws:
     get:
-      operationId: alertWebSocket
-      summary: Live alert WebSocket stream
-      tags: [Alerts]
+      tags:
+      - Alerts
+      summary: AlertsWebsocket
+      description: Live alert stream. Authenticate with a single-use ticket from POST
+        /auth/ws-ticket passed as ?ticket=.
+      parameters:
+      - name: ticket
+        in: query
+        required: true
+        schema:
+          type: string
       responses:
-        "101":
-          description: WebSocket upgrade
-
+        '101':
+          description: Switching Protocols
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: API token
   schemas:
-    Envelope:
-      type: object
-      properties:
-        data: {}
-        pagination:
-          type: object
-          properties:
-            cursor: { type: string, nullable: true }
-            limit: { type: integer }
-            total: { type: integer }
-        meta:
-          type: object
-        errors:
-          type: array
-          items:
-            type: object
-            properties:
-              code: { type: string }
-              message: { type: string }
-              trace_id: { type: string, nullable: true }
-
-    HealthResponse:
-      type: object
-      properties:
-        status: { type: string }
-        service: { type: string }
-        version: { type: string }
-
-    DetailedHealthResponse:
-      type: object
-      properties:
-        status: { type: string }
-        services:
-          type: object
-          additionalProperties:
-            type: object
-
-    GraphData:
-      type: object
-      required: [nodes, edges]
-      properties:
-        nodes:
-          type: array
-          items:
-            type: object
-            properties:
-              id: { type: string }
-              label: { type: string }
-              type: { type: string }
-              properties: { type: object }
-        edges:
-          type: array
-          items:
-            type: object
-            properties:
-              source: { type: string }
-              target: { type: string }
-              relation: { type: string }
-              confidence: { type: number }
-        truncated: { type: boolean }
-        limits: { type: object, additionalProperties: { type: integer } }
-
-    WatchlistCreate:
-      type: object
-      required: [name, terms]
-      properties:
-        name: { type: string }
-        terms: { type: array, items: { type: string } }
-        notify: { type: boolean, default: true }
-
-    WatchlistResponse:
-      allOf:
-        - $ref: "#/components/schemas/WatchlistCreate"
-        - type: object
-          required: [id, enabled]
-          properties:
-            id: { type: string }
-            enabled: { type: boolean }
-            created_at: { type: string, format: date-time }
-            updated_at: { type: string, format: date-time }
-
-    SlangEntry:
-      type: object
-      required: [term, meaning]
-      properties:
-        term: { type: string }
-        meaning: { type: string }
-        lang: { type: string, default: en }
-        confidence: { type: number, default: 1.0 }
-        newly_discovered: { type: boolean, default: false }
-        review_status: { type: string, enum: [pending, approved, rejected] }
-
-    SlangResponse:
-      allOf:
-        - $ref: "#/components/schemas/SlangEntry"
-        - type: object
-          required: [id, review_status]
-          properties:
-            id: { type: string }
-            review_status: { type: string, enum: [pending, approved, rejected] }
-            created_at: { type: string, format: date-time }
-            updated_at: { type: string, format: date-time }
-
     AlertConfig:
-      type: object
       properties:
         rules:
-          type: array
           items:
+            $ref: '#/components/schemas/AlertRule'
+          type: array
+          title: Rules
+      type: object
+      title: AlertConfig
+    AlertHistoryResponse:
+      properties:
+        data:
+          items:
+            additionalProperties: true
             type: object
-            properties:
-              name: { type: string }
-              severity_min: { type: integer, default: 0 }
-              products: { type: array, items: { type: string } }
-              neighborhoods: { type: array, items: { type: string } }
-              enabled: { type: boolean, default: true }
-
+          type: array
+          title: Data
+        pagination:
+          anyOf:
+          - $ref: '#/components/schemas/Pagination'
+          - type: 'null'
+        meta:
+          additionalProperties: true
+          type: object
+          title: Meta
+        errors:
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          type: array
+          title: Errors
+      type: object
+      title: AlertHistoryResponse
+    AlertPatch:
+      properties:
+        acknowledged:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Acknowledged
+        assignee:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Assignee
+        resolved:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Resolved
+      type: object
+      title: AlertPatch
+    AlertRule:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        severity_min:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: Severity Min
+          default: 0
+        products:
+          items:
+            type: string
+          type: array
+          maxItems: 200
+          title: Products
+        neighborhoods:
+          items:
+            type: string
+          type: array
+          maxItems: 200
+          title: Neighborhoods
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        audience:
+          type: string
+          enum:
+          - viewer
+          - analyst
+          - administrator
+          title: Audience
+          default: viewer
+      type: object
+      required:
+      - name
+      title: AlertRule
+    ApiEnvelope:
+      properties:
+        data:
+          title: Data
+        pagination:
+          anyOf:
+          - $ref: '#/components/schemas/Pagination'
+          - type: 'null'
+        meta:
+          additionalProperties: true
+          type: object
+          title: Meta
+        errors:
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          type: array
+          title: Errors
+      type: object
+      title: ApiEnvelope
+    ErrorDetail:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+        trace_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trace Id
+      type: object
+      required:
+      - code
+      - message
+      title: ErrorDetail
     EvidenceSealRequest:
-      type: object
-      required: [payload]
       properties:
-        payload: { type: string }
-
-    EvidenceSealResponse:
+        payload:
+          type: string
+          maxLength: 100000
+          minLength: 1
+          title: Payload
       type: object
+      required:
+      - payload
+      title: EvidenceSealRequest
+    EvidenceVerifyRequest:
       properties:
-        hash_sha256: { type: string }
-        tsa_token: { type: string }
-        tsa_verified: { type: boolean }
-        sealed_at: { type: integer }
-        provenance: { type: string }
-        previous_hash: { type: string, nullable: true }
+        payload:
+          type: string
+          maxLength: 5000000
+          minLength: 1
+          title: Payload
+        hash_sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          title: Hash Sha256
+      type: object
+      required:
+      - payload
+      - hash_sha256
+      title: EvidenceVerifyRequest
+    GraphData:
+      properties:
+        nodes:
+          items:
+            $ref: '#/components/schemas/GraphNode'
+          type: array
+          title: Nodes
+        edges:
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+          type: array
+          title: Edges
+        truncated:
+          type: boolean
+          title: Truncated
+          default: false
+        limits:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Limits
+      type: object
+      title: GraphData
+    GraphEdge:
+      properties:
+        source:
+          type: string
+          title: Source
+        target:
+          type: string
+          title: Target
+        relation:
+          type: string
+          title: Relation
+        confidence:
+          type: number
+          title: Confidence
+          default: 0.0
+      type: object
+      required:
+      - source
+      - target
+      - relation
+      title: GraphEdge
+    GraphNode:
+      properties:
+        id:
+          type: string
+          title: Id
+        label:
+          type: string
+          title: Label
+        type:
+          type: string
+          title: Type
+        properties:
+          additionalProperties: true
+          type: object
+          title: Properties
+      type: object
+      required:
+      - id
+      - label
+      - type
+      title: GraphNode
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LoginRequest:
+      properties:
+        token:
+          type: string
+          maxLength: 4096
+          minLength: 1
+          title: Token
+      type: object
+      required:
+      - token
+      title: LoginRequest
+    Pagination:
+      properties:
+        cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+        limit:
+          type: integer
+          title: Limit
+          default: 50
+        total:
+          type: integer
+          title: Total
+          default: 0
+      type: object
+      title: Pagination
+    SlangEntry:
+      properties:
+        term:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Term
+        meaning:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Meaning
+        lang:
+          type: string
+          maxLength: 32
+          minLength: 1
+          title: Lang
+          default: en
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          default: 1.0
+        newly_discovered:
+          type: boolean
+          title: Newly Discovered
+          default: false
+      type: object
+      required:
+      - term
+      - meaning
+      title: SlangEntry
+    SlangListResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/SlangResponse'
+          type: array
+          title: Data
+        pagination:
+          anyOf:
+          - $ref: '#/components/schemas/Pagination'
+          - type: 'null'
+        meta:
+          additionalProperties: true
+          type: object
+          title: Meta
+        errors:
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          type: array
+          title: Errors
+      type: object
+      title: SlangListResponse
+    SlangResponse:
+      properties:
+        term:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Term
+        meaning:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Meaning
+        lang:
+          type: string
+          maxLength: 32
+          minLength: 1
+          title: Lang
+          default: en
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          default: 1.0
+        newly_discovered:
+          type: boolean
+          title: Newly Discovered
+          default: false
+        review_status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          title: Review Status
+          default: approved
+        id:
+          type: string
+          title: Id
+        created_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        usage_count:
+          type: integer
+          title: Usage Count
+          default: 0
+      type: object
+      required:
+      - term
+      - meaning
+      - id
+      title: SlangResponse
+    SlangUpdate:
+      properties:
+        term:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Term
+        meaning:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Meaning
+        lang:
+          type: string
+          maxLength: 32
+          minLength: 1
+          title: Lang
+          default: en
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          default: 1.0
+        newly_discovered:
+          type: boolean
+          title: Newly Discovered
+          default: false
+        review_status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          title: Review Status
+          default: approved
+      type: object
+      required:
+      - term
+      - meaning
+      title: SlangUpdate
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WatchlistCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        terms:
+          items:
+            type: string
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Terms
+        notify:
+          type: boolean
+          title: Notify
+          default: true
+      type: object
+      required:
+      - name
+      - terms
+      title: WatchlistCreate
+    WatchlistListResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/WatchlistResponse'
+          type: array
+          title: Data
+        pagination:
+          anyOf:
+          - $ref: '#/components/schemas/Pagination'
+          - type: 'null'
+        meta:
+          additionalProperties: true
+          type: object
+          title: Meta
+        errors:
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          type: array
+          title: Errors
+      type: object
+      title: WatchlistListResponse
+    WatchlistResponse:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        terms:
+          items:
+            type: string
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Terms
+        notify:
+          type: boolean
+          title: Notify
+          default: true
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        id:
+          type: string
+          title: Id
+        created_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        match_count:
+          type: integer
+          title: Match Count
+          default: 0
+      type: object
+      required:
+      - name
+      - terms
+      - id
+      title: WatchlistResponse
+    WatchlistUpdate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        terms:
+          items:
+            type: string
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Terms
+        notify:
+          type: boolean
+          title: Notify
+          default: true
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      type: object
+      required:
+      - name
+      - terms
+      title: WatchlistUpdate
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+servers:
+- url: http://localhost:8003

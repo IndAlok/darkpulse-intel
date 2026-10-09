@@ -36,6 +36,7 @@ class NLPPipeline:
         known_actors: dict[str, Any] | None = None,
         auto_discovery_threshold: float = 0.7,
         auto_discovery_min_occurrences: int = 3,
+        auto_discovery: bool = True,
     ) -> None:
         self._slang_dict = slang_dictionary or SlangDictionary()
         if slang_seed_path:
@@ -45,7 +46,7 @@ class NLPPipeline:
         self._severity_weights = severity_weights
         self._known_actors = known_actors or {}
         self._auto_discovery: Any | None = None
-        self._auto_discovery_unavailable = False
+        self._auto_discovery_unavailable = not auto_discovery
         self._auto_discovery_threshold = auto_discovery_threshold
         self._auto_discovery_min_occurrences = auto_discovery_min_occurrences
         if intent_model_path:
@@ -79,7 +80,9 @@ class NLPPipeline:
             self._intent_classifier = IntentClassifier()
         return self._intent_classifier
 
-    def process(self, record: Any) -> TraffickingIntel | None:
+    def process(
+        self, record: Any, known_actors: dict[str, Any] | None = None
+    ) -> TraffickingIntel | None:
         import time
 
         start_time = time.time()
@@ -157,9 +160,6 @@ class NLPPipeline:
                 except ImportError:
                     self._auto_discovery_unavailable = True
                     logger.info("Auto-discovery disabled because optional dependencies are absent")
-            if self._auto_discovery is not None:
-                for word in self._tokenize_terms(processed_text):
-                    self._auto_discovery.observe_term(word, context=processed_text[:200])
 
             intent_classifier = self._get_intent_classifier()
             intent = intent_classifier.classify(processed_text)
@@ -177,7 +177,7 @@ class NLPPipeline:
             actor_links = detect_all_actor_links(
                 entities,
                 source_class=source_class,
-                known_actors=self._known_actors,
+                known_actors=known_actors if known_actors is not None else self._known_actors,
             )
 
             products = self._build_products(extracted_entities, slang_decoded, deterministic)
@@ -217,6 +217,17 @@ class NLPPipeline:
                 severity=severity,
                 confidence=self._calculate_confidence(intent, geo, language_info),
             )
+
+            has_signal = bool(
+                products or slang_decoded or entities.vendors or entities.crypto_wallets
+            )
+            if intent.label == IntentLabel.UNRELATED and not has_signal:
+                self._metrics["dropped"] += 1
+                return None
+
+            if self._auto_discovery is not None:
+                for word in self._tokenize_terms(processed_text):
+                    self._auto_discovery.observe_term(word, context=processed_text[:200])
 
             self._metrics["processed"] += 1
 

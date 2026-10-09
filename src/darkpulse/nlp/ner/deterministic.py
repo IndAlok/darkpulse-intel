@@ -29,6 +29,7 @@ _BCH_PATTERN = re.compile(r"\b(?:bitcoincash:)?[qp][a-z0-9]{41}\b")
 
 _XRP_PATTERN = re.compile(r"\br[a-km-zA-HJ-NP-Z1-9]{24,34}\b")
 
+# Solana: base58 alphabet, explicit 32..44 length window
 _SOL_PATTERN = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
 
 
@@ -63,6 +64,7 @@ def extract_crypto_wallets(text: str) -> list[CryptoWallet]:
     _add("LTC", _LTC_PATTERNS[1])
     _add("BCH", _BCH_PATTERN)
     _add("XRP", _XRP_PATTERN)
+    _add("SOL", _SOL_PATTERN)
 
     return wallets
 

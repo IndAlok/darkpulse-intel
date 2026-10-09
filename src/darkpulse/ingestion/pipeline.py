@@ -6,6 +6,8 @@ from enum import StrEnum
 from time import perf_counter
 from uuid import uuid4
 
+from pymongo.errors import DuplicateKeyError
+
 from darkpulse.ingestion.dedup import DedupStore
 from darkpulse.ingestion.hashing import (
     derive_dedup_key,
@@ -154,7 +156,13 @@ class IngestionPipeline:
                 ),
             )
             self._validator.validate(contract_record)
-            await self._publisher.publish(contract_record)
+            try:
+                inserted = await self._publisher.publish(contract_record)
+            except DuplicateKeyError:
+                # the unique index is the source of truth: another collector
+                # inserted this dedup_key between reserve and publish
+                inserted = False
+                self._metrics.duplicates.labels(source_class=source_class).inc()
         except Exception:
             await self._dedup_store.release(dedup_key)
             self._metrics.failures.labels(stage="validate_or_publish").inc()
@@ -168,6 +176,10 @@ class IngestionPipeline:
                 },
             )
             raise
+
+        if not inserted:
+            await self._dedup_store.commit(dedup_key)
+            return PipelineOutcome(status=OutcomeStatus.DUPLICATE, dedup_key=dedup_key)
 
         try:
             await self._dedup_store.commit(dedup_key)
@@ -200,6 +212,7 @@ class IngestionPipeline:
                         "dedup_key": dedup_key,
                     },
                 )
+                raise RuntimeError("dedup commit failed after publish") from None
 
         self._metrics.published.labels(source_class=source_class).inc()
         self._metrics.duration.labels(

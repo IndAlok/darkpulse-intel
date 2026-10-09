@@ -41,7 +41,6 @@ class CliCollector(BaseCollector):
 def test_production_sources_are_public_https_or_disabled_datasets() -> None:
     registry = SourceRegistry.from_path(REPO_SOURCES)
     enabled = [source for source in registry.sources if source.enabled]
-    assert enabled
     for source in enabled:
         assert source.source_class in SURFACE_SOURCE_CLASSES
         validate_public_surface_url(source.locator)
@@ -111,7 +110,7 @@ async def test_collect_all_dry_run_skips_unsupported_and_summarizes(
     assert summary["command"] == "collect-all"
     assert summary["dry_run"] is True
     by_id = {item["source_id"]: item for item in summary["runs"]}
-    assert by_id["evolution-primary"]["failure_code"] == "unsupported_live_class"
+    assert not by_id["evolution-primary"].get("failure_code")
     assert by_id["evolution-primary"]["skipped"] is True
     assert by_id["news-a"]["published"] == 1
     assert "news-off" not in by_id

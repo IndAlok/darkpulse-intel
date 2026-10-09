@@ -36,3 +36,8 @@ ARCHITECTURE.md
 final_plan_ers.md
 PS_6.md
 pyrightconfig.json
+research/
+docs/
+.agents/
+.zwork/
+observability/

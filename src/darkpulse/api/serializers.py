@@ -2,26 +2,39 @@ from __future__ import annotations
 
 from typing import Any
 
+from darkpulse.api.excerpts import _SENSITIVE
 from darkpulse.models import TraffickingIntel
 
 
-def serialize_intel(doc: dict[str, Any]) -> dict[str, Any]:
+def serialize_intel(doc: dict[str, Any], *, role: str | None = None) -> dict[str, Any]:
     cleaned = {key: value for key, value in doc.items() if key != "_id"}
     snapshot = cleaned.pop("evidence_snapshot", None)
     cleaned.pop("processing", None)
-    if "sanitization" not in cleaned or "intent" not in cleaned or "severity" not in cleaned:
-        return {**cleaned, **({"evidence_snapshot": snapshot} if snapshot else {})}
-    try:
-        payload = TraffickingIntel.model_validate(cleaned).model_dump(
-            mode="json", by_alias=True
-        )
-    except Exception:
-        payload = cleaned
+    payload = cleaned
+    if {"sanitization", "intent", "severity"} <= cleaned.keys():
+        try:
+            payload = TraffickingIntel.model_validate(cleaned).model_dump(
+                mode="json", by_alias=True
+            )
+        except Exception:
+            payload = cleaned
     if snapshot:
         payload["evidence_snapshot"] = snapshot
     for key in ("intel_id", "ingest_id", "trace_id"):
         if payload.get(key) is not None:
             payload[key] = str(payload[key])
+    if role == "viewer":
+        entities = payload.get("entities")
+        if isinstance(entities, dict):
+            payload["entities"] = {
+                key: value
+                for key, value in entities.items()
+                if key not in {"crypto_wallets", "contacts", "pgp_fingerprints"}
+            }
+        payload["actor_links"] = []
+        text = payload.get("translated_text")
+        if isinstance(text, str):
+            payload["translated_text"] = _SENSITIVE.sub("[REDACTED]", text)
     return payload
 
 

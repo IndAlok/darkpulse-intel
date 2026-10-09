@@ -9,7 +9,7 @@ import {
   SeverityBadge,
   SourceBadge,
 } from "../components/Ui";
-import { searchApi } from "../lib/api";
+import { intelApi, searchApi } from "../lib/api";
 import { formatDate } from "../lib/formatters";
 import { useApi, useDebouncedValue } from "../hooks";
 
@@ -22,14 +22,21 @@ export default function SearchPage() {
   const lang = params.get("lang") || "";
   const debounced = useDebouncedValue(`${q}|${lang}`);
   const [query, language] = debounced.split("|");
-  const result = useApi(
-    () => (query ? searchApi.search(query, language || undefined) : Promise.resolve({ data: [] })),
+  const searched = useApi(
+    () => (query ? searchApi.search(query, language || undefined) : Promise.resolve(null)),
     debounced,
   );
-  const records = result.data?.data;
-  const cards = useMemo(
-    () =>
-      (records ?? []).map((record) => ({
+  const recent = useApi(
+    () => (query ? Promise.resolve(null) : intelApi.list({ limit: "12" })),
+    debounced,
+  );
+  const loading = query ? searched.loading : recent.loading;
+  const error = query ? searched.error : recent.error;
+  const errorCode = query ? searched.errorCode : recent.errorCode;
+  const reload = query ? searched.reload : recent.reload;
+  const cards = useMemo(() => {
+    if (query) {
+      return (searched.data?.data ?? []).map((record) => ({
         id: record.intel_id,
         products:
           record.products?.map((product) => product.canonical || product.raw_term).filter(Boolean).join(", ") ||
@@ -41,16 +48,26 @@ export default function SearchPage() {
         source: record.source_class || "unknown",
         captured: record.captured_at,
         confidence: record.confidence ?? 0,
-      })),
-    [records],
-  );
+      }));
+    }
+    return (recent.data?.data ?? []).map((item) => ({
+      id: item.intel_id,
+      products: item.products.join(", ") || item.intent_label || "Unspecified indicator",
+      excerpt: item.vendor_aliases.join(", "),
+      band: item.severity_band || "info",
+      neighborhood: item.neighborhood,
+      source: item.source_class || "unknown",
+      captured: item.captured_at,
+      confidence: item.confidence ?? 0,
+    }));
+  }, [query, recent.data, searched.data]);
 
   return (
     <div>
       <PageHeader
         eyebrow="INVESTIGATE"
         title="Search"
-        description="Language-aligned full-text search over sanitized intelligence records."
+        description="Language-aligned search. An empty box shows the latest sanitized records."
       />
       <div className="mb-4 flex flex-wrap gap-2">
         <input
@@ -81,7 +98,7 @@ export default function SearchPage() {
           ))}
         </select>
       </div>
-      <DataState loading={result.loading} error={result.error} retry={result.reload} code={result.errorCode}>
+      <DataState loading={loading} error={error} retry={reload} code={errorCode}>
         {cards.length ? (
           <div className="grid gap-3 md:grid-cols-2">
             {cards.map((card) => (
@@ -107,8 +124,12 @@ export default function SearchPage() {
           </div>
         ) : (
           <EmptyState
-            title={query ? "No matches" : "Enter a query"}
-            detail={query ? "The search index returned no sanitized records." : "Results use the same cards as intelligence."}
+            title={query ? "No matches" : "No intelligence yet"}
+            detail={
+              query
+                ? "The search index returned no sanitized records."
+                : "Published records appear here before a query is entered."
+            }
           />
         )}
       </DataState>

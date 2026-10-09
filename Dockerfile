@@ -15,7 +15,7 @@ COPY data /build/data
 WORKDIR /build
 
 RUN python -m pip install --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir --prefix=/install .
+    && pip install --no-cache-dir --prefix=/install ".[langid]"
 
 FROM python:3.11-slim-bookworm AS runtime
 
@@ -55,4 +55,7 @@ USER darkpulse
 
 EXPOSE 8080
 
-CMD ["uvicorn", "darkpulse.api.app:app", "--host", "0.0.0.0", "--port", "8080"]
+# No image-level HEALTHCHECK: backend and collector share this image but only
+# backend serves HTTP. docker-compose.yml defines the per-service checks.
+
+CMD ["sh", "-c", "exec uvicorn darkpulse.api.app:app --host 0.0.0.0 --port ${PORT:-8080}"]

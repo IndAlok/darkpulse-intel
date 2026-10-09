@@ -120,13 +120,11 @@ def match_explicit(text: str) -> tuple[str | None, float, list[str]]:
 
     for term in sorted_terms:
         canonical = index[term]
-        if len(term) <= 4:
-            pattern = re.compile(r"\b" + re.escape(term) + r"\b", re.I)
-            if pattern.search(text_lower):
-                matches.append((canonical, term))
-        else:
-            if term in text_lower:
-                matches.append((canonical, term))
+        if term in {"station", "chowk"}:
+            continue
+        pattern = re.compile(r"\b" + re.escape(term) + r"\b", re.I)
+        if pattern.search(text_lower):
+            matches.append((canonical, term))
 
     if not matches:
         return (None, 0.0, [])

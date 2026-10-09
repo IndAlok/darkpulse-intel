@@ -24,7 +24,14 @@ export default function ActorGraphPage() {
   const [params, setParams] = useSearchParams();
   const center = params.get("center") || "";
   const typeFilter = params.get("type") || "";
-  const graph = useApi(() => graphApi.get(center || undefined, 2, 160), center);
+  const [draft, setDraft] = useState(center);
+  const [queryCenter, setQueryCenter] = useState(center);
+  useEffect(() => setDraft(center), [center]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQueryCenter(draft), 300);
+    return () => window.clearTimeout(timer);
+  }, [draft]);
+  const graph = useApi(() => graphApi.get(queryCenter || undefined, 2, 160), queryCenter);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -49,10 +56,11 @@ export default function ActorGraphPage() {
   }, [nodes, selected]);
 
   const setCenter = (value: string) => {
+    setDraft(value);
     const next = new URLSearchParams(params);
     if (value) next.set("center", value);
     else next.delete("center");
-    setParams(next);
+    setParams(next, { replace: true });
   };
 
   const onWheel = (event: WheelEvent<SVGSVGElement>) => {
@@ -93,7 +101,7 @@ export default function ActorGraphPage() {
         <input
           className="min-w-64 flex-1 rounded border border-border bg-surface px-3 py-2 text-sm"
           placeholder="center e.g. vendor:alias or intel:id"
-          value={center}
+          value={draft}
           onChange={(event) => setCenter(event.target.value)}
         />
         <button
@@ -273,8 +281,23 @@ export default function ActorGraphPage() {
               ) : (
                 <EmptyState title="Select a node" detail="Scroll to zoom, drag empty space to pan." />
               )}
+              <ul className="mt-4 max-h-64 space-y-1 overflow-auto">
+                {nodes.map((node) => (
+                  <li key={node.id}>
+                    <button
+                      type="button"
+                      className="w-full rounded px-2 py-1 text-left hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal"
+                      onClick={() => setSelected(node)}
+                    >
+                      <span className="text-muted">{node.type}</span> {node.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </aside>
           </div>
+        ) : rawNodes?.length ? (
+          <EmptyState title="No nodes of this type" detail="Clear the type filter to see the rest of the graph." />
         ) : (
           <EmptyState title="Empty graph" detail="No nodes resolved for this center. Collect intel or try another ID." />
         )}
@@ -301,19 +324,39 @@ function layoutForce(
     };
   });
   const minDist = Math.max(88, 240 / Math.sqrt(count));
-  for (let tick = 0; tick < 180; tick += 1) {
-    for (const a of nodes) {
-      for (const b of nodes) {
-        if (a.id === b.id) continue;
-        const pa = points[a.id];
-        const pb = points[b.id];
-        const dx = pa.x - pb.x;
-        const dy = pa.y - pb.y;
-        const dist = Math.max(Math.hypot(dx, dy), 1);
-        const overlap = minDist - dist;
-        const force = overlap > 0 ? overlap * 0.08 : 220 / (dist * dist);
-        pa.vx += (dx / dist) * force;
-        pa.vy += (dy / dist) * force;
+  const ticks = count > 80 ? 24 : 60;
+  for (let tick = 0; tick < ticks; tick += 1) {
+    const buckets = new Map<string, string[]>();
+    for (const node of nodes) {
+      const point = points[node.id];
+      const key = `${Math.floor(point.x / minDist)}:${Math.floor(point.y / minDist)}`;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(node.id);
+      else buckets.set(key, [node.id]);
+    }
+    for (const [key, ids] of buckets) {
+      const [cx, cy] = key.split(":").map(Number);
+      const nearby: string[] = [];
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          nearby.push(...(buckets.get(`${cx + dx}:${cy + dy}`) ?? []));
+        }
+      }
+      for (const left of ids) {
+        for (const right of nearby) {
+          if (left >= right) continue;
+          const pa = points[left];
+          const pb = points[right];
+          const dx = pa.x - pb.x;
+          const dy = pa.y - pb.y;
+          const dist = Math.max(Math.hypot(dx, dy), 1);
+          const overlap = minDist - dist;
+          const force = overlap > 0 ? overlap * 0.08 : 220 / (dist * dist);
+          pa.vx += (dx / dist) * force;
+          pa.vy += (dy / dist) * force;
+          pb.vx -= (dx / dist) * force;
+          pb.vy -= (dy / dist) * force;
+        }
       }
     }
     for (const edge of edges) {

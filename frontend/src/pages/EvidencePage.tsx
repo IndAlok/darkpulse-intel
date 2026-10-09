@@ -117,7 +117,7 @@ export default function EvidencePage() {
           <DataState loading={chain.loading} error={chain.error} retry={chain.reload} code={chain.errorCode}>
             {chain.data?.data ? (
               <p className="text-sm">
-                {chain.data.data.verified ? "Seal chain intact" : "Seal chain broken"} ·{" "}
+                {chain.data.data.verified ? "Ledger links consistent" : "Ledger links broken"} ·{" "}
                 {chain.data.data.record_count} records · {chain.data.data.breaks.length} breaks
               </p>
             ) : (
@@ -153,7 +153,10 @@ export default function EvidencePage() {
               <p className="text-muted">{linkedEvidence.data.data.excerpt}</p>
             </div>
           ) : requestedIntel ? (
-            <EmptyState title="No record-linked evidence" />
+            <EmptyState
+              title="No record-linked evidence"
+              detail="This intelligence ID has no stored excerpt."
+            />
           ) : (
             <p className="text-sm text-muted">Enter an intelligence ID to retrieve its excerpt.</p>
           )}

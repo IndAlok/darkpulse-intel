@@ -11,7 +11,7 @@
   {
     "source_id": "google-news-surat-narcotics",
     "source_class": "social",
-    "enabled": true,
+    "enabled": false,
     "locator": "https://news.google.com/rss/search?q=Surat+narcotics+OR+Gujarat+NDPS+OR+Surat+drugs&hl=en-IN&gl=IN&ceid=IN:en",
     "max_response_bytes": 2000000,
     "request_timeout_seconds": 30,
@@ -20,7 +20,7 @@
   {
     "source_id": "google-news-gujarat-ndps",
     "source_class": "social",
-    "enabled": true,
+    "enabled": false,
     "locator": "https://news.google.com/rss/search?q=Gujarat+narcotics+OR+Surat+heroin+OR+Surat+cocaine&hl=en-IN&gl=IN&ceid=IN:en",
     "max_response_bytes": 2000000,
     "request_timeout_seconds": 30,
@@ -29,7 +29,7 @@
   {
     "source_id": "indian-express-india",
     "source_class": "social",
-    "enabled": true,
+    "enabled": false,
     "locator": "https://indianexpress.com/section/india/feed/",
     "max_response_bytes": 2000000,
     "request_timeout_seconds": 30,

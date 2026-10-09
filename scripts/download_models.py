@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +17,9 @@ MODELS = {
         "path": "/app/models/lid.176.bin",
         "size_mb": 130,
         "description": "fastText Language Identification model",
+        # No SHA-256 pin: fastText publishes no official digest for this file.
+        # The download is integrity-checked by size only. Add "sha256" here
+        # only when an official digest can be cited. Do not invent one.
     },
 }
 
@@ -67,25 +70,6 @@ def download_fasttext_model() -> bool:
     return download_file(config["url"], dest)
 
 
-def download_hf_model(model_name: str, cache_dir: str | None = None) -> bool:
-    try:
-        from transformers import AutoModel, AutoTokenizer
-
-        logger.info("Downloading HuggingFace model: %s", model_name)
-
-        AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-        logger.info("Tokenizer downloaded: %s", model_name)
-
-        AutoModel.from_pretrained(model_name, cache_dir=cache_dir)
-        logger.info("Model downloaded: %s", model_name)
-
-        return True
-
-    except Exception:
-        logger.exception("Failed to download HuggingFace model: %s", model_name)
-        return False
-
-
 def download_spacy_model() -> bool:
     try:
         import spacy
@@ -98,8 +82,11 @@ def download_spacy_model() -> bool:
             pass
 
         logger.info("Downloading spaCy xx_ent_wiki_sm...")
-        os.system(f"{sys.executable} -m spacy download xx_ent_wiki_sm")
-        return True
+        completed = subprocess.run(
+            [sys.executable, "-m", "spacy", "download", "xx_ent_wiki_sm"],
+            check=False,
+        )
+        return completed.returncode == 0
 
     except Exception:
         logger.exception("Failed to download spaCy model")
@@ -107,40 +94,20 @@ def download_spacy_model() -> bool:
 
 
 def main() -> None:
-    logger.info("=" * 60)
-    logger.info("DarkPulse NLP — Model Download Script")
-    logger.info("=" * 60)
-
-    results = {}
-
-    logger.info("\n[1/3] Downloading fastText LID model...")
-    results["fasttext"] = download_fasttext_model()
-
-    muril_enabled = os.environ.get("DOWNLOAD_MURIL", "false").lower() == "true"
-    if muril_enabled:
-        logger.info("\n[2/3] Downloading MuRIL model...")
-        results["muril"] = download_hf_model("google/muril-base-cased")
-    else:
-        logger.info("\n[2/3] Skipping MuRIL (set DOWNLOAD_MURIL=true to enable)")
-        results["muril"] = True
-
-    logger.info("\n[3/3] Downloading spaCy model...")
-    results["spacy"] = download_spacy_model()
-
-    logger.info("\n" + "=" * 60)
-    logger.info("Download Summary:")
+    results = {
+        "fasttext": download_fasttext_model(),
+        "spacy": download_spacy_model(),
+    }
+    logger.info("Download summary:")
     for name, success in results.items():
         status = "OK" if success else "FAILED"
         logger.info("  %s: %s", name, status)
 
     failed = [name for name, success in results.items() if not success]
     if failed:
-        logger.warning("Some models failed to download: %s", ", ".join(failed))
-        logger.warning("The service will use fallback implementations")
-    else:
-        logger.info("All models downloaded successfully!")
-
-    logger.info("=" * 60)
+        logger.error("Some models failed to download: %s", ", ".join(failed))
+        raise SystemExit(1)
+    logger.info("All models downloaded")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import inspect
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pymongo import ReturnDocument
 
 from darkpulse.api.audit import audit_event
 from darkpulse.api.deps import MongoDep
+from darkpulse.api.routes.alerts import _validate_id
 from darkpulse.api.security import AnalystDep, ViewerDep
 from darkpulse.models import ApiEnvelope, SlangEntry, SlangListResponse, SlangResponse, SlangUpdate
 
@@ -64,7 +66,7 @@ async def list_slang(
         query["newly_discovered"] = newly_discovered
     if review_status is not None:
         query["review_status"] = review_status
-    docs = await db.slang.find(query).sort("updated_at", -1).to_list(length=200)
+    docs = await db.slang.find(query).sort("updated_at", -1).to_list(length=500)
     counts = await _usage_counts(db)
     return SlangListResponse(
         data=[_response(doc, counts.get(str(doc.get("term", "")).casefold(), 0)) for doc in docs]
@@ -72,9 +74,12 @@ async def list_slang(
 
 
 @router.get("/candidates", response_model=SlangListResponse)
-async def list_candidates(db: MongoDep, _: ViewerDep, limit: int = 50) -> SlangListResponse:
-    cursor = db.slang.find({"newly_discovered": True}).sort("updated_at", -1).limit(min(limit, 200))
-    docs = await cursor.to_list(length=min(limit, 200))
+async def list_candidates(
+    db: MongoDep, _: ViewerDep, limit: int = Query(default=50, ge=1, le=200)
+) -> SlangListResponse:
+    bounded = limit
+    cursor = db.slang.find({"newly_discovered": True}).sort("updated_at", -1).limit(bounded)
+    docs = await cursor.to_list(length=bounded)
     counts = await _usage_counts(db)
     return SlangListResponse(
         data=[_response(doc, counts.get(str(doc.get("term", "")).casefold(), 0)) for doc in docs]
@@ -85,6 +90,11 @@ async def list_candidates(db: MongoDep, _: ViewerDep, limit: int = 50) -> SlangL
 async def create_slang_entry(
     req: SlangEntry, request: Request, db: MongoDep, principal: AnalystDep
 ) -> dict[str, Any]:
+    existing = await db.slang.find_one(
+        {"term": {"$regex": f"^{re.escape(req.term)}$", "$options": "i"}}
+    )
+    if isinstance(existing, dict):
+        raise HTTPException(status_code=409, detail="Slang term already exists")
     now = datetime.now(UTC)
     doc = {
         "_id": str(uuid.uuid4()),
@@ -104,9 +114,10 @@ async def create_slang_entry(
 async def update_slang_entry(
     slang_id: str, req: SlangUpdate, request: Request, db: MongoDep, principal: AnalystDep
 ) -> dict[str, Any]:
+    _validate_id(slang_id, "slang_id")
     doc = await db.slang.find_one_and_update(
         {"_id": slang_id},
-        {"$set": {**req.model_dump(), "updated_at": datetime.now(UTC)}},
+        {"$set": {**req.model_dump(exclude_unset=True), "updated_at": datetime.now(UTC)}},
         return_document=ReturnDocument.AFTER,
     )
     if not doc:
@@ -121,6 +132,7 @@ async def update_slang_entry(
 async def approve_candidate(
     slang_id: str, request: Request, db: MongoDep, principal: AnalystDep
 ) -> dict[str, Any]:
+    _validate_id(slang_id, "slang_id")
     doc = await db.slang.find_one_and_update(
         {"_id": slang_id},
         {
@@ -144,6 +156,7 @@ async def approve_candidate(
 async def reject_candidate(
     slang_id: str, request: Request, db: MongoDep, principal: AnalystDep
 ) -> dict[str, Any]:
+    _validate_id(slang_id, "slang_id")
     doc = await db.slang.find_one_and_update(
         {"_id": slang_id},
         {
@@ -167,6 +180,7 @@ async def reject_candidate(
 async def delete_slang_entry(
     slang_id: str, request: Request, db: MongoDep, principal: AnalystDep
 ) -> None:
+    _validate_id(slang_id, "slang_id")
     result = await db.slang.delete_one({"_id": slang_id})
     if not result.deleted_count:
         raise HTTPException(status_code=404, detail="Slang entry not found")

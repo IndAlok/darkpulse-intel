@@ -64,6 +64,7 @@ class BoundedHttpClient:
         max_response_bytes: int,
         timeout_seconds: float,
         allowed_mime_types: frozenset[str],
+        user_agent: str = "darkpulse-collector/1.0 (+observe-only)",
     ) -> HttpFetchResult:
         scheme = urlsplit(url).scheme.casefold()
         if scheme not in {"http", "https"}:
@@ -77,7 +78,10 @@ class BoundedHttpClient:
                     url,
                     timeout=timeout_seconds,
                     follow_redirects=False,
-                    headers={"Accept": ", ".join(sorted(allowed_mime_types))},
+                    headers={
+                        "Accept": ", ".join(sorted(allowed_mime_types)),
+                        "User-Agent": user_agent,
+                    },
                 ) as response:
                     if response.status_code in self.RETRYABLE_STATUS_CODES:
                         if attempt < self._retry_policy.max_retries:

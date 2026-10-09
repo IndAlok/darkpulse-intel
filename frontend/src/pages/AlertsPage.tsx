@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ConfirmationDialog,
@@ -8,6 +8,7 @@ import {
   PageHeader,
   Toast,
 } from "../components/Ui";
+import { usePrincipal } from "../lib/principal";
 import { alertsApi, wsUrl } from "../lib/api";
 import { formatDate } from "../lib/formatters";
 import { useApi } from "../hooks";
@@ -16,7 +17,9 @@ import type { AlertRule } from "../types/api";
 export default function AlertsPage() {
   const history = useApi(() => alertsApi.history());
   const config = useApi(() => alertsApi.config());
-  const [live, setLive] = useState<"connecting" | "connected" | "down">("connecting");
+  const [live, setLive] = useState<"connecting" | "connected" | "down" | "refused">(
+    "connecting",
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState<AlertRule>({
     name: "",
@@ -26,30 +29,68 @@ export default function AlertsPage() {
     enabled: true,
   });
   const [confirm, setConfirm] = useState<AlertRule[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const rulesReady = !config.loading && !config.error && config.data != null;
+  const canWrite = usePrincipal()?.role !== "viewer";
 
+  const reloadHistory = history.reload;
   useEffect(() => {
     let socket: WebSocket | null = null;
-    try {
-      socket = new WebSocket(wsUrl());
-      socket.onopen = () => setLive("connected");
-      socket.onclose = () => setLive("down");
-      socket.onerror = () => setLive("down");
-      socket.onmessage = () => {
-        void history.reload();
+    let closed = false;
+    let retry: number | undefined;
+    let ping: number | undefined;
+    let delay = 1000;
+    const connect = async () => {
+      let ticket: string;
+      try {
+        ticket = (await alertsApi.ticket()).data.ticket;
+      } catch {
+        if (!closed) {
+          setLive("down");
+          retry = window.setTimeout(() => void connect(), delay);
+          delay = Math.min(delay * 2, 30000);
+        }
+        return;
+      }
+      if (closed) return;
+      socket = new WebSocket(wsUrl(ticket));
+      socket.onopen = () => {
+        delay = 1000;
+        setLive("connected");
+        ping = window.setInterval(() => socket?.send("ping"), 25000);
       };
-    } catch {
-      setLive("down");
-    }
-    return () => socket?.close();
-  }, [history.reload]);
+      socket.onmessage = () => {
+        void reloadHistory();
+      };
+      socket.onclose = (event) => {
+        window.clearInterval(ping);
+        setLive(event.code === 1008 ? "refused" : "down");
+        if (!closed && event.code !== 1008) {
+          retry = window.setTimeout(() => void connect(), delay);
+          delay = Math.min(delay * 2, 30000);
+        }
+      };
+    };
+    void connect();
+    return () => {
+      closed = true;
+      window.clearTimeout(retry);
+      window.clearInterval(ping);
+      socket?.close();
+    };
+  }, [reloadHistory]);
 
   const saveRules = async (rules: AlertRule[]) => {
+    if (!rulesReady || saving) return;
+    setSaving(true);
     try {
       await alertsApi.updateConfig(rules);
       await config.reload();
       setToast("Alert rules updated");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Unable to save rules");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -120,65 +161,109 @@ export default function AlertsPage() {
         )}
       </DataState>
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <h2 className="mb-3 text-sm font-semibold">Rule editor</h2>
-        <div className="mb-3 grid gap-2 md:grid-cols-4">
-          <input
-            className="rounded border border-border bg-bg px-3 py-2 text-sm"
-            placeholder="Rule name"
-            value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-          />
-          <input
-            type="number"
-            className="rounded border border-border bg-bg px-3 py-2 text-sm"
-            value={draft.severity_min}
-            onChange={(event) => setDraft({ ...draft, severity_min: Number(event.target.value) })}
-          />
-          <input
-            className="rounded border border-border bg-bg px-3 py-2 text-sm"
-            placeholder="Products, comma separated"
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                products: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
-              })
-            }
-          />
-          <button
-            className="rounded bg-teal px-3 py-2 text-sm text-bg"
-            onClick={() => {
-              if (!draft.name.trim()) return;
-              setConfirm([...(config.data?.data.rules ?? []), draft]);
-            }}
-          >
-            Add rule
-          </button>
-        </div>
-        <ul className="space-y-2 text-sm">
-          {(config.data?.data.rules ?? []).map((rule) => (
-            <li key={rule.name} className="flex justify-between">
-              <span>
-                {rule.name} · min {rule.severity_min}
-              </span>
-              <button
-                className="text-red-300"
-                onClick={() =>
-                  setConfirm((config.data?.data.rules ?? []).filter((item) => item.name !== rule.name))
-                }
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+              <h2 className="mb-3 text-sm font-semibold">Rule editor</h2>
+              <div className="mb-3 grid gap-2 md:grid-cols-4">
+                <input
+                  className="rounded border border-border bg-bg px-3 py-2 text-sm"
+                  placeholder="Rule name"
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                />
+                <input
+                  type="number"
+                  className="rounded border border-border bg-bg px-3 py-2 text-sm"
+                  value={draft.severity_min}
+                  onChange={(event) => setDraft({ ...draft, severity_min: Number(event.target.value) })}
+                />
+                <input
+                  className="rounded border border-border bg-bg px-3 py-2 text-sm"
+                  placeholder="Products, comma separated"
+                  value={draft.products.join(", ")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      products: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                    })
+                  }
+                />
+                <input
+                  className="rounded border border-border bg-bg px-3 py-2 text-sm"
+                  placeholder="Neighborhoods, comma separated"
+                  value={draft.neighborhoods.join(", ")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      neighborhoods: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                    })
+                  }
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draft.enabled}
+                    onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+                  />
+                  Enabled
+                </label>
+                <button
+                  className="rounded bg-teal px-3 py-2 text-sm text-bg disabled:opacity-40"
+                  disabled={!canWrite || !rulesReady || saving}
+                  onClick={() => {
+                    if (!rulesReady || !draft.name.trim()) return;
+                    setConfirm([...(config.data?.data.rules ?? []), draft]);
+                  }}
+                >
+                  Add rule
+                </button>
+              </div>
+              <ul className="space-y-2 text-sm">
+                {(config.data?.data.rules ?? []).map((rule) => (
+                  <li key={rule.name} className="flex items-center justify-between">
+                    <span>
+                      {rule.name} · min {rule.severity_min}
+                      {rule.products.length ? ` · ${rule.products.join(", ")}` : ""}
+                      {rule.neighborhoods.length ? ` · ${rule.neighborhoods.join(", ")}` : ""}
+                      {rule.enabled ? "" : " · disabled"}
+                    </span>
+                    <span className="flex gap-3">
+                      <button
+                        className="text-xs text-teal disabled:opacity-40"
+                        disabled={!canWrite || !rulesReady || saving}
+                        onClick={() => {
+                          if (!rulesReady) return;
+                          setDraft({
+                            name: rule.name,
+                            severity_min: rule.severity_min,
+                            products: rule.products,
+                            neighborhoods: rule.neighborhoods,
+                            enabled: rule.enabled,
+                          });
+                        }}
+                      >
+                        Load into editor
+                      </button>
+                      <button
+                        className="text-red-300 disabled:opacity-40"
+                        disabled={!canWrite || !rulesReady || saving}
+                        onClick={() => {
+                          if (!rulesReady) return;
+                          setConfirm((config.data?.data.rules ?? []).filter((item) => item.name !== rule.name));
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
       <ConfirmationDialog
         open={Boolean(confirm)}
         title="Update alert rules"
         detail="This writes the analyst-controlled alert configuration."
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          if (confirm) void saveRules(confirm);
+          if (confirm && rulesReady && !saving) void saveRules(confirm);
           setConfirm(null);
         }}
       />

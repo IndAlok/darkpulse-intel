@@ -3,6 +3,6 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python -m darkpulse.cli collect-all --loop --interval 300"
+startCommand = "sh -c 'exec python -m darkpulse.cli collect-all --loop --interval ${COLLECT_INTERVAL:-300}'"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10

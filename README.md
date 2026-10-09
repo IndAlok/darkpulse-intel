@@ -1,326 +1,166 @@
 # DarkPulse
 
-DarkPulse is a production-grade localized dark web intelligence monitor built for law-enforcement investigators. It sweeps indexed onion sites, underground forums, public digital marketplaces, and approved public Telegram channels, detects localized trafficking indicators, decodes evolving multilingual slang, geo-localizes activity to Surat neighborhoods, profiles vendors and actors with relationship graphs, and surfaces actionable, traceable, severity-scored intelligence with tamper-evident evidence sealing.
+DarkPulse is an observe-only narcotics OSINT desk for investigators in Surat. The desk holds one corpus and does not partition records by case. It loads historical dark-market datasets and collects from sources an operator has explicitly approved: public HTTPS feeds, reviewed onion seeds over Tor, and authorized public Telegram channels. Each record is scored for trafficking intent, decoded for local slang, matched against 44 Surat neighborhoods, and linked to vendors in a relationship graph. Analysts can export selected records with a SHA-256 seal of the exact file they download.
 
-## Table of Contents
-
-1. [Architecture](#architecture)
-2. [Features](#features)
-3. [Quick Start](#quick-start)
-4. [Configuration](#configuration)
-5. [API Reference](#api-reference)
-6. [Deployment](#deployment)
-7. [Safety and Ethics](#safety-and-ethics)
-8. [Development](#development)
-9. [Troubleshooting](#troubleshooting)
+The shipped `config/sources.json` enables no live source and `config/onion-review.json` approves no onion seed. Collection starts only after an operator adds and enables a reviewed source.
 
 ## Architecture
 
 ```
-SOURCES                          PIPELINE                          INVESTIGATORS
-─────────────────────            ──────────────────────────        ─────────────────────
-Historical datasets   ──▶  Collection → Safety gate → Hash →       React dashboard
-Public Telegram       ──▶  Contract 1 → MongoDB (pending) →        (trends, graph, map,
-Approved surface      ──▶  processor → NLP (slang, NER,             alerts, reports)
-Reviewed onion seeds  ──▶  intent, geo, severity) → Contract 2 →   │
-                            MongoDB + Neo4j                         ▼
-                            → API + alerts + evidence sealing      API on :8003
+Historical datasets ─┐
+Approved HTTPS feeds ─┼─▶ safety gate ─▶ hash + dedup ─▶ MongoDB raw_ingest (pending)
+Reviewed onion seeds ─┤                                          │
+Authorized Telegram ──┘                                          ▼
+                         processor ─▶ NLP (slang, entities, intent, geo, severity)
+                                           │
+                               MongoDB intel + Neo4j graph + alerts
+                                           │
+                          FastAPI (container 8080, host 8003) ─▶ React desk (port 5173)
 ```
-
-The system is a single unified Python service with four functional layers:
 
 | Layer | Location | Responsibility |
 |-------|----------|----------------|
-| Ingestion | `src/darkpulse/ingestion/` | Collectors, historical loaders, pre-publish safety gate, hashing, deduplication, Contract 1 persistence |
-| NLP | `src/darkpulse/nlp/` | Sanitization, language detection, slang decoding, NER, intent, geo, actor links, severity |
-| Storage | `src/darkpulse/storage/` | MongoDB (including full-text search) and Neo4j connection managers |
-| API | `src/darkpulse/api/` | FastAPI investigator API, evidence sealing, export |
+| Ingestion | `src/darkpulse/ingestion/` | Collectors, historical loaders, pre-publish safety gate, hashing, dedup, Contract 1 writes |
+| NLP | `src/darkpulse/nlp/` | Sanitizer, language detection, slang decoding, entity extraction, rule-based intent, geo, actor hypotheses, severity |
+| Storage | `src/darkpulse/storage/` | MongoDB and Neo4j managers |
+| API | `src/darkpulse/api/` | Investigator API, sessions, evidence sealing, export |
 
-Data flows through two frozen contracts:
+Contracts in `contracts/`: Contract 1 (`RawIngest`), Contract 2 (`TraffickingIntel`), and Contract 3 (the OpenAPI file the desk uses). `tests/test_openapi_contract.py` fails when Contract 3 and the live routes disagree.
 
-- **Contract 1 (RawIngest)** - `contracts/contract1-raw-ingest.schema.json`. Produced by ingestion, consumed by the NLP pipeline and storage.
-- **Contract 2 (TraffickingIntel)** - `contracts/contract2-intel.schema.json`. Produced by NLP, consumed by storage and the API.
-- **Contract 3 (Investigator API)** - `contracts/contract3-api.openapi.yaml`. Served to the frontend.
+## What it does
 
-Every artifact carries a `trace_id` threaded from capture through processing to the API.
+- **Ingestion.** Evolution and Gwern loaders, approved HTTPS feeds, reviewed onion seeds (bounded by page and depth limits), and authorized public Telegram channels. Unreviewed onion seeds and invite links are refused. `i2p` is a source-class value in the contracts. There is no i2p collector.
+- **Safety gate.** Disallowed content types, oversized payloads, blocked source prefixes, and blocked SHA-256 hashes are rejected before anything is written. The shipped blocklists are empty; load a reviewed list for production.
+- **NLP.** Gujarati, Hindi, English, and romanized text. A curated dictionary of 217 slang terms that analysts can extend or reject. Deterministic extraction of wallets, PGP fingerprints, contacts, prices, and quantities. Intent (sale, solicitation, discussion, review, unrelated) uses rules unless a trained model file is present. Text with intent `unrelated` and no product, slang, vendor, or wallet signal is dropped.
+- **Actors.** Vendor aggregation and identity hypotheses from shared aliases, PGP fingerprints, and wallets. Hypotheses carry a confidence and are never asserted as identity.
+- **Alerts.** Rules filter on severity, product, and neighborhood. Watchlists match whole words. Alerts stream over a WebSocket that takes a one-time ticket.
+- **Evidence.** Exports are sealed with the SHA-256 of the downloaded bytes, returned in the `X-DarkPulse-Evidence-Seal` header. Each ledger entry stores the previous entry's hash, and `GET /api/v1/evidence/verify` checks those links. RFC 3161 timestamping is not implemented, and startup refuses `DARKPULSE_RFC3161_ENABLED=true`. Dedup and content-state TTLs are documented in `docs/evidence.md`.
+- **Desk.** Intel feed with filters, search, trends, a neighborhood plot of the 44 gazetteer names (not a street map), the actor graph, alerts, watchlists, slang review, reports, and evidence. The system status page (`/operations`) is administrator-only.
 
-## Features
+## Quick start
 
-- **Multi-source ingestion** - Evolution and Gwern historical datasets, approved public Telegram channels, approved surface sites, and reviewed onion seeds with bounded crawl policy.
-- **Pre-publish safety gate** - prohibited media, blocked sources, and blocked content hashes are rejected in memory before anything is persisted.
-- **Multilingual NLP** - Gujarati, Hindi, English, and code-mixed/romanized text, curated slang dictionary (200+ terms) plus embedding-based auto-discovery with analyst review.
-- **Deterministic entity extraction** - Bitcoin, Ethereum, Monero, Litecoin, and Bitcoin Cash wallets, PGP fingerprints, Telegram/Wickr/Signal/email/phone contacts, prices and quantities.
-- **Intent classification** - sale / solicitation / discussion / review / unrelated with rule-based and ML paths.
-- **Geo-localization** - explicit, slang-based, ship-from, and inferred matching against a 44-neighborhood Surat gazetteer.
-- **Actor profiling** - vendor aggregation, pseudonym-link hypotheses (username, PGP, wallet), activity timelines.
-- **Relationship graph** - Neo4j with Vendor, Wallet, Product, Neighborhood, Market, and IntelRef nodes.
-- **Severity scoring (TSI)** - explainable, factor-based, config-tunable with bands from info to critical.
-- **Alerting** - configurable rules with severity/product/neighborhood filters, history, and WebSocket streaming.
-- **Evidence sealing** - SHA-256 of final emitted bytes, optional RFC 3161 trusted timestamps, hash-chained ledger.
-- **Investigator dashboard** - intel feed, trends, source ranking, neighborhood heatmap, actor graph, alerts, watchlists, slang dictionary, and sealed report export.
-
-## Quick Start
-
-### Prerequisites
-
-- Docker Engine 24+ with Docker Compose v2
-- 8 GB RAM recommended (16 GB for full NLP models)
-- Python 3.11+ and Node 20+ only for local development
-
-### Run the full stack
+Requires Docker Engine 24+ with Compose v2 and about 8 GB of RAM.
 
 ```bash
-cd darkpulse
+cd darkpulse-intel
 cp .env.example .env
-# Set NEO4J_PASSWORD and GRAFANA_PASSWORD to real values
-
-docker compose --profile core build
+# Replace every CHANGE_ME value. Auth tokens must be at least 32 random characters.
 docker compose --profile core up -d
 ```
 
-Services:
+`up` uses the existing images. Pass `--build` when those images are missing or stale.
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
+| Service | Address |
+|---------|---------|
+| Desk | http://localhost:5173 |
 | API | http://localhost:8003/api/v1 |
-| API docs (Swagger) | http://localhost:8003/docs |
 | Neo4j Browser | http://localhost:7474 |
-| MongoDB | localhost:27017 |
+
+Compose maps host port 8003 to container port 8080. The API process inside the container listens on 8080.
+
+Sign in to the desk with a token from `DARKPULSE_AUTH_TOKENS_JSON`. `POST /api/v1/auth/login` is the only route that accepts that configured token. It returns an 8-hour session token. `POST /api/v1/auth/logout` revokes the session. Other routes accept only the session token.
+
+Loopback open mode is the only unauthenticated path. Set `DARKPULSE_AUTH_ENABLED=false`, `DARKPULSE_LOCAL_OPEN_MODE=true`, and `DARKPULSE_API_HOST=127.0.0.1`, and run the API on the host. Requests from 127.0.0.1 are treated as administrator. Production refuses this mode.
 
 ### Load historical data
 
-Place the Evolution dataset under `./data/evolution/market/` (listings.tsv, scrapes.tsv), then:
+Place `listings.tsv` and `scrapes.tsv` under `./data/evolution/market/`, then:
 
 ```bash
 docker compose --profile loader up evolution-loader
 ```
 
-Or run locally:
+Loaders exit non-zero when the file is missing or every row is rejected.
+
+### Demo corpus
+
+`scripts/seed_demo.py` publishes synthetic observations so the desk has records to show. The API container root is read-only, so pipe the script in. The Compose container name is `darkpulse-backend-1`.
 
 ```bash
-pip install -e ".[dev]"
-python -m darkpulse.cli evolution --input data/evolution/market/listings.tsv --scrapes data/evolution/market/scrapes.tsv --limit 1000
+docker exec -i -e PYTHONPATH=/app/src darkpulse-backend-1 python - < scripts/seed_demo.py
 ```
 
-### Verify the pipeline
+```powershell
+Get-Content -Raw scripts\seed_demo.py | docker exec -i -e PYTHONPATH=/app/src darkpulse-backend-1 python -
+```
+
+### Check health
 
 ```bash
-# Intelligence stored
-curl http://localhost:8003/api/v1/intel?limit=5
-
-# Health
-curl http://localhost:8003/api/v1/health
+curl http://localhost:8003/health          # liveness, always {"status": "ok"}
+curl http://localhost:8003/api/v1/health   # readiness: 503 if MongoDB, Neo4j, or the processor is down
 ```
+
+The readiness body also reports the latest collector run; `never_run` marks the overall status `degraded` without failing readiness.
 
 ## Configuration
 
-All configuration is via environment variables with the `DARKPULSE_` prefix (see `.env.example` for the complete list).
+Every setting is an environment variable; `.env.example` lists all of them with host-side values. Compose overrides the datastore URLs with in-network service names.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `DARKPULSE_ENVIRONMENT` | development | development or production (changes CORS) |
-| `DARKPULSE_PROCESSOR_POLL_INTERVAL_SECONDS` | 2.0 | Raw-ingest processor poll interval |
-| `DARKPULSE_REDIS_URL` | redis://localhost:16379/0 | Redis for dedup/checkpoints |
-| `DARKPULSE_MONGODB_URI` | mongodb://localhost:27017 | MongoDB connection |
-| `DARKPULSE_MONGODB_DATABASE` | darkpulse | MongoDB database |
-| `DARKPULSE_NEO4J_URI` | bolt://localhost:7687 | Neo4j connection |
-| `NEO4J_PASSWORD` | - | Neo4j password (required in production) |
-| `DARKPULSE_SLANG_SEED_PATH` | data/slang_dictionary/seed_dictionary.txt | Curated slang dictionary |
-| `DARKPULSE_RFC3161_ENABLED` | false | Enable RFC 3161 timestamp requests |
-| `DARKPULSE_RFC3161_TSA_URL` | - | Trusted Timestamp Authority URL |
-| `DARKPULSE_TELEGRAM_API_ID` | - | Telegram API ID (authorized collection only) |
-| `DARKPULSE_TELEGRAM_API_HASH` | - | Telegram API hash (authorized collection only) |
-| `DARKPULSE_TOR_PROXY_URL` | socks5://localhost:9050 | Tor SOCKS proxy for onion collection |
+| Variable | Purpose |
+|----------|---------|
+| `DARKPULSE_AUTH_ENABLED`, `DARKPULSE_AUTH_TOKENS_JSON` | Required unless loopback open mode is set |
+| `DARKPULSE_LOCAL_OPEN_MODE` | Loopback-only development mode; refused in production |
+| `REDIS_PASSWORD`, `MONGO_ROOT_PASSWORD`, `NEO4J_PASSWORD` | Datastore credentials; Compose refuses to start without them |
+| `DARKPULSE_RAW_RETENTION_DAYS` | Days completed or dropped raw records are kept (pending and failed records are never expired) |
+| `DARKPULSE_PROCESSOR_*` | Processor poll interval, lease, and attempts |
+| `DARKPULSE_SEVERITY_*` | Severity weights; startup fails unless they sum to 1.0 |
+| `DARKPULSE_TOR_PROXY_URL` | Tor SOCKS proxy (`socks5://tor:9050` in Compose) |
+| `DARKPULSE_TELEGRAM_API_ID`, `DARKPULSE_TELEGRAM_API_HASH` | Authorized Telegram collection only |
+| `COLLECT_INTERVAL` | Seconds between `collect-all` cycles |
 
-Severity weights are configurable via `DARKPULSE_SEVERITY_INTENT`, `DARKPULSE_SEVERITY_PRODUCT_HARM`, `DARKPULSE_SEVERITY_SOURCE_RELIABILITY`, `DARKPULSE_SEVERITY_LOCALIZATION`, `DARKPULSE_SEVERITY_RECENCY`, and `DARKPULSE_SEVERITY_EXPOSURE` (must sum to 1.0).
+In production (`DARKPULSE_ENVIRONMENT=production`) startup also requires an HTTPS frontend origin and TLS on non-local MongoDB and Redis URLs.
 
-## API Reference
-
-Interactive documentation is available at `/docs` (Swagger UI). All JSON responses use the envelope format:
-
-```json
-{
-  "data": ...,
-  "pagination": {"cursor": null, "limit": 50, "total": 0},
-  "meta": {},
-  "errors": []
-}
-```
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Service health |
-| GET | `/api/v1/health` | Health with datastore + consumer status |
-| GET | `/api/v1/intel` | Filtered intel feed (`product`, `neighborhood`, `severity_min`, `band`, `source_class`, `date_from`, `date_to`, `vendor`, `q`, `cursor`, `limit`) |
-| GET | `/api/v1/intel/{id}` | Full intel detail |
-| GET | `/api/v1/actors` | Actor/vendor list |
-| GET | `/api/v1/actors/{id}` | Actor profile with timeline |
-| GET | `/api/v1/graph` | Relationship graph (raw `{nodes, edges}`, `node_type` filter) |
-| POST | `/api/v1/auth/login` | Exchange an access token for `{subject, role}` |
-| GET | `/api/v1/auth/me` | Current principal |
-| GET | `/api/v1/search` | Multilingual full-text search |
-| GET | `/api/v1/dashboards/trends` | Activity trends (`7d`, `30d`, `90d`) |
-| GET | `/api/v1/dashboards/sources` | Source ranking |
-| GET | `/api/v1/dashboards/geo` | Neighborhood heatmap |
-| GET/POST | `/api/v1/watchlists` | Watchlist CRUD |
-| GET/POST | `/api/v1/slang` | Slang dictionary CRUD |
-| GET | `/api/v1/slang/candidates` | Auto-discovered slang candidates |
-| POST | `/api/v1/slang/{id}/approve` | Approve a discovered candidate |
-| DELETE | `/api/v1/slang/{id}` | Delete a slang entry |
-| GET/PUT | `/api/v1/alerts/config` | Alert rule configuration |
-| GET | `/api/v1/alerts/history` | Alert history |
-| GET | `/api/v1/export` | Export (`format=csv|json|pdf`, `intel_ids=...`) with sealed evidence |
-| POST | `/api/v1/evidence/seal` | Seal an arbitrary payload |
-| GET | `/api/v1/evidence/{hash}` | Inspect a ledger seal |
-| GET | `/api/v1/evidence/verify` | Verify the hash-chained evidence ledger integrity |
-| POST | `/api/v1/evidence/verify` | Verify a payload against a claimed seal hash |
-| GET | `/api/v1/intel/{id}/evidence` | Governed evidence metadata for a record |
-| GET | `/api/v1/operations/sources` | Approved source registry (admin) |
-| GET | `/api/v1/operations/processing` | Raw ingest processing state (admin) |
-| GET | `/api/v1/operations/onion-review` | Onion review posture (admin) |
-| GET | `/api/v1/operations/audit` | Minimized audit log (admin) |
-| GET | `/api/v1/operations/collection-runs` | Collector run history (admin) |
-| PATCH | `/api/v1/alerts/history/{id}` | Acknowledge or assign an alert |
-| WS | `/api/v1/alerts/ws` | Live alert stream |
+A login session lasts 8 hours. The API keeps it in process memory and copies it to Redis when Redis is reachable. Logout deletes it. WebSocket tickets are single-use and expire after 60 seconds.
 
 ## Deployment
 
-### Docker Compose (recommended)
-
-```bash
-cp .env.example .env
-# Set real passwords
-docker compose --profile core build
-docker compose --profile core up -d
-```
-
-Profiles:
-
-| Profile | Services |
-|---------|----------|
+| Compose profile | Services |
+|-----------------|----------|
 | `core` | Redis, MongoDB, Neo4j, backend, collector, frontend |
-| `loader` | One-shot Evolution dataset loader |
-| `tor` | Tor SOCKS proxy for reviewed onion collection |
-| `observability` | Prometheus, Grafana |
+| `loader` | One-shot Evolution loader |
+| `tor` | Tor SOCKS proxy for reviewed onion seeds |
+| `observability` | Prometheus (scrapes the backend's internal metrics port 9100) and Grafana |
 
-### Railway
+Railway uses `railway.toml` (API, health check on `/api/v1/health`), `collector.railway.toml`, and `frontend/railway.toml`. Both backend services read `PORT`.
 
-Production runs on Railway. The repository includes `railway.toml` and
-`frontend/railway.toml`. The production architecture is backend, frontend,
-collector (same backend image, `python -m darkpulse.cli collect-all --loop`),
-MongoDB, and Redis, with Neo4j on AuraDB. The backend boots fail-closed in
-production (auth, HTTPS frontend origin, and a non-default Neo4j password
-are required). The frontend never publishes API tokens; investigators sign
-in through `/auth/login`. Attach a Mongo volume of at least 1 GB (or set
-WiredTiger cache ~0.25 on a 500 MB volume). Telegram and onion collection
-stay CLI-gated. Historical `evolution` / `gwern` loads are one-shot jobs
-when datasets are mounted. Set `PORT` explicitly (8080 backend, 5173
-frontend) and use the template `MONGO_URL` for `DARKPULSE_MONGODB_URI`.
+Before production:
 
-### Production checklist
+1. Set real values for every credential in `.env.example`.
+2. Set `DARKPULSE_ENVIRONMENT=production` and an `https://` `DARKPULSE_FRONTEND_ORIGIN`.
+3. Load reviewed blocklists into `safety/policy/prepublish-v1.json`.
+4. Enable a live source only with written authorization and a reviewed entry in `config/onion-review.json` for onion seeds (checklist in `docs/onion-review.md`).
 
-1. Set `NEO4J_PASSWORD` and `GRAFANA_PASSWORD` to strong values.
-2. Set `DARKPULSE_ENVIRONMENT=production` and `DARKPULSE_FRONTEND_ORIGIN`.
-3. Mount an approved safety blocklist (blocked source prefixes, source hashes, content hashes) - the shipped policy has empty blocklists by design.
-4. Configure `DARKPULSE_RFC3161_TSA_URL` if sealed exports must carry trusted timestamps.
-5. Run the full test suite before deploying.
-6. Keep live Telegram/onion collection disabled until written authorization and a reviewed source policy exist.
+## Safety
 
-## Safety and Ethics
-
-DarkPulse is an observe-only OSINT tool. The following rules are enforced in code:
-
-- **No transacting.** The system never buys, messages targets, joins private sources, or authenticates into gated markets.
-- **No de-anonymization.** Actor and pseudonym links are confidence-scored hypotheses for investigator confirmation - never asserted identities.
-- **CSAM and prohibited media are hard-dropped** before persistence by the pre-publish safety gate and the NLP sanitizer (YARA rules, keyword patterns, and hash blocklists). Content-free audit events are emitted instead.
-- **Data minimization.** Only public text is stored, binaries are rejected by default, raw records expire via TTL (24 h raw, 30 d alerts).
-- **Evidence integrity.** Captures are SHA-256 hashed at the moment of capture, exports seal their canonical content bytes (the delivered file embeds the seal manifest and the hash is also returned in the `X-DarkPulse-Evidence-Seal` header) and are optionally RFC 3161 timestamped, the evidence ledger is hash-chained and verifiable through `/api/v1/evidence/verify`.
-
-A report or export is not a claim of legal admissibility - authorization, procedure, and competent authority review determine that.
+DarkPulse never buys, messages targets, joins private sources, or logs in to gated markets. Actor links are hypotheses for an investigator to confirm. Viewer accounts do not receive wallets, contacts, PGP fingerprints, or identity hypotheses. A sealed export is not a claim of legal admissibility.
 
 ## Development
 
-### Setup
-
 ```bash
-cd darkpulse
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-source .venv/bin/activate     # Linux/macOS
-pip install -e ".[dev]"
-```
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate       # Linux/macOS
+pip install -e ".[dev,langid]"  # langid adds fastText; it has no wheel for Python 3.13 on Windows
+python -m pytest tests -q
+python -m ruff check src tests scripts
+python -m mypy src
 
-### Tests
-
-```bash
-python -m pytest tests/ -v
-```
-
-### Frontend
-
-```bash
 cd frontend
 npm ci
 npm run lint
-npm run test
+npm test
 npm run build
 ```
 
-The frontend is a dark command-center: login, command palette, Recharts trends,
-a force-directed graph with stable IDs, and a geographic Surat map. Tests use
-Vitest + React Testing Library.
-
-Public HTTPS collection loop:
-
-```bash
-python -m darkpulse.cli collect-all --loop --interval 300
-```
-
-### Project layout
-
-```
-├── src/darkpulse/
-│   ├── api/          FastAPI routes, deps, app
-│   ├── broker/       MongoDB-backed raw-ingest processor
-│   ├── evidence/     Evidence sealing (RFC 3161, ledger)
-│   ├── ingestion/    Collectors, loaders, safety, hashing, dedup, pipeline
-│   ├── nlp/          Sanitizer, language, slang, NER, intent, geo, actors, severity
-│   ├── storage/      MongoDB (search), Neo4j managers
-│   ├── config.py     Unified settings
-│   ├── models.py     Contract 1/2 models + API models
-│   └── cli.py        Command-line ingestion tool
-├── frontend/         React investigator dashboard
-├── contracts/        JSON Schemas (source of truth)
-├── safety/           Pre-publish safety policy
-├── data/             Seed slang dictionary
-├── scripts/          Model download, Gwern fetch, intent training
-├── tests/            Python test suite
-├── Dockerfile        Backend image (models preloaded at build)
-├── frontend/Dockerfile
-└── docker-compose.yml
-```
-
-### Model training
-
-```bash
-# Download NLP models (fastText LID, spaCy)
-python scripts/download_models.py
-
-# Fetch Gwern Grams/Kilos training data
-python scripts/fetch_gwern_data.py
-
-# Train the intent classifier
-python scripts/train_intent.py
-```
+`scripts/download_models.py` fetches the fastText language model and the spaCy multilingual model and exits non-zero if either fails. `scripts/train_intent.py` trains an intent model from Gwern data fetched by `scripts/fetch_gwern_data.py`.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| `docker compose build` fails | Ensure you run from the repository root (the Dockerfile and compose file live there) |
-| NLP logs "fasttext not available" | Run `python scripts/download_models.py` and set `DARKPULSE_FASTTEXT_LID_PATH` to the model location (the backend image preloads it at build time) |
-| Frontend shows "API unavailable" | Confirm the backend is healthy: `curl http://localhost:8003/api/v1/health` |
-| Telegram auth fails | Set `DARKPULSE_TELEGRAM_API_ID` and `DARKPULSE_TELEGRAM_API_HASH`, then run `python -m darkpulse.cli telegram-auth` |
-| Evidence seal shows hash-only | `DARKPULSE_RFC3161_ENABLED` is false or no TSA URL configured, hash-only sealing is still valid integrity evidence |
-| Ports already in use | All host ports are configurable via compose, adjust the left side of port mappings |
+| Backend exits at startup | Read the last log line: it names the missing token map, password, or TLS setting |
+| NLP logs "fasttext not available" | Install the `langid` extra and run `python scripts/download_models.py` |
+| Desk shows the Retry screen | The API was unreachable while checking the session; confirm `/api/v1/health` |
+| Alerts show "WS refused" | The socket ticket or origin was rejected; sign in again and check `DARKPULSE_FRONTEND_ORIGIN` |
+| Telegram auth fails | Set the API id and hash, then run `python -m darkpulse.cli telegram-auth` |

@@ -3,12 +3,11 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import type { SeverityBand } from "../types/api";
 
 export function PageHeader({
-  eyebrow,
   title,
   description,
   action,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description: string;
   action?: ReactNode;
@@ -16,10 +15,7 @@ export function PageHeader({
   return (
     <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <span className="font-mono text-[11px] tracking-[0.22em] text-teal uppercase">
-          {eyebrow}
-        </span>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">{description}</p>
       </div>
       {action}
@@ -75,7 +71,7 @@ export function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-xs ${
+      className={`rounded-md border px-3 py-1 text-xs ${
         active
           ? "border-teal/40 bg-teal/10 text-teal"
           : "border-border bg-raised text-muted hover:text-ink"
@@ -123,7 +119,7 @@ export function EmptyState({
   );
 }
 
-export function errorTitle(error: string, code?: string | null): string {
+function errorTitle(error: string, code?: string | null): string {
   switch (code) {
     case "unauthenticated":
       return "Sign in required";
@@ -213,11 +209,7 @@ export function Panel({
     <section className={`rounded-xl border border-border bg-surface p-4 ${className}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
-        {kicker ? (
-          <span className="font-mono text-[10px] tracking-widest text-muted uppercase">
-            {kicker}
-          </span>
-        ) : null}
+        {kicker ? <span className="font-mono text-xs text-muted">{kicker}</span> : null}
       </div>
       {children}
     </section>

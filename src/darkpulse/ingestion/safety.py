@@ -41,8 +41,15 @@ class SafetyPolicy:
     blocked_content_sha256: frozenset[str]
 
     @classmethod
-    def from_path(cls, path: Path) -> SafetyPolicy:
+    def from_path(cls, path: Path, *, require_blocklist: bool = False) -> SafetyPolicy:
         raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        blocked_content = frozenset(
+            str(item).casefold() for item in raw.get("blocked_content_sha256", [])
+        )
+        if require_blocklist and not blocked_content:
+            raise RuntimeError(
+                "safety policy must list blocked_content_sha256 before production boot"
+            )
         return cls(
             policy_version=str(raw["policy_version"]),
             max_source_bytes=int(raw["max_source_bytes"]),
@@ -59,9 +66,7 @@ class SafetyPolicy:
             blocked_source_sha256=frozenset(
                 str(item).casefold() for item in raw.get("blocked_source_sha256", [])
             ),
-            blocked_content_sha256=frozenset(
-                str(item).casefold() for item in raw.get("blocked_content_sha256", [])
-            ),
+            blocked_content_sha256=blocked_content,
         )
 
     def evaluate(
@@ -92,18 +97,20 @@ class SafetyPolicy:
         if any(ord(char) < 32 and char not in "\t\n\r" for char in record.raw_content):
             reasons.append(RejectReason.BINARY_CONTROL_CHARACTER)
 
-        checks = (
+        checks = [
             "content_type:text_only",
             "mime_type:allowlist",
             "size_limits",
             "source_policy",
-            "blocked_source_hash",
-            "blocked_content_hash",
             "binary_persistence:false",
-        )
+        ]
+        if self.blocked_source_sha256:
+            checks.append("blocked_source_hash")
+        if self.blocked_content_sha256:
+            checks.append("blocked_content_hash")
         return SafetyDecision(
             accepted=not reasons,
             policy_version=self.policy_version,
-            checks=checks,
+            checks=tuple(checks),
             reasons=tuple(dict.fromkeys(reasons)),
         )

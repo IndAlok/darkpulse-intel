@@ -3,10 +3,12 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pymongo.errors import OperationFailure
 
 from darkpulse.api.audit import audit_event
 from darkpulse.api.deps import MongoDep
 from darkpulse.api.excerpts import normalize_excerpt
+from darkpulse.api.routes.alerts import _validate_id
 from darkpulse.api.search_query import extract_intel_id, intel_id_candidates
 from darkpulse.api.security import ViewerDep
 from darkpulse.api.serializers import serialize_intel
@@ -21,7 +23,7 @@ MAX_LIMIT = 200
 async def _find_intel(mongo: MongoDep, query: dict[str, Any]) -> dict[str, Any] | None:
     try:
         doc = await mongo.intel.find_one(query)
-    except Exception:
+    except (ValueError, OperationFailure):
         return None
     return doc if isinstance(doc, dict) and doc.get("intel_id") else None
 
@@ -100,7 +102,7 @@ async def list_intel(
     date_to: datetime | None = None,
     vendor: str | None = None,
     intel_id: str | None = None,
-    q: str | None = None,
+    q: str | None = Query(default=None, max_length=200),
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
 ) -> dict[str, Any]:
@@ -233,11 +235,12 @@ async def list_intel(
 async def get_intel(
     intel_id: str, request: Request, mongo: MongoDep, principal: ViewerDep
 ) -> dict[str, Any]:
+    _validate_id(intel_id, "intel_id")
     doc = await fetch_intel_doc(mongo, intel_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Intel record not found")
 
-    payload = serialize_intel(doc)
+    payload = serialize_intel(doc, role=principal.role)
 
     await audit_event(
         mongo, request, principal, "intel.read", target_type="intel", target_id=intel_id
@@ -252,6 +255,7 @@ async def get_intel(
 async def get_intel_evidence(
     intel_id: str, request: Request, mongo: MongoDep, principal: ViewerDep
 ) -> dict[str, Any]:
+    _validate_id(intel_id, "intel_id")
     intel = await fetch_intel_doc(mongo, intel_id)
     if not intel:
         raise HTTPException(status_code=404, detail="Intel record not found")

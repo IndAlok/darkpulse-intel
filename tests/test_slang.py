@@ -1,26 +1,24 @@
 # ruff: noqa: S101
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from darkpulse.api.app import app
-from darkpulse.api.deps import get_mongo
-
-patch("darkpulse.broker.processor.MongoProcessor.start", new_callable=AsyncMock).start()
+from darkpulse.api.deps import get_mongo, get_settings
 
 mock_mongo = AsyncMock()
 mock_mongo.slang.find = MagicMock()
 app.dependency_overrides[get_mongo] = lambda: mock_mongo
 
-
 @pytest.fixture
-def slang_client():
+def slang_client(auth_settings, auth_headers):
     app.dependency_overrides[get_mongo] = lambda: mock_mongo
+    app.dependency_overrides[get_settings] = lambda: auth_settings
     with TestClient(app) as c:
+        c.headers.update(auth_headers)
         yield c
     app.dependency_overrides.clear()
-
 
 def test_get_slang(slang_client: TestClient) -> None:
     mock_cursor = MagicMock()
@@ -45,7 +43,6 @@ def test_get_slang(slang_client: TestClient) -> None:
     assert len(data["data"]) == 1
     assert data["data"][0]["id"] == "sl-1"
     assert data["data"][0]["term"] == "snow"
-
 
 def test_create_slang(slang_client: TestClient) -> None:
     mock_mongo.slang.insert_one = AsyncMock()

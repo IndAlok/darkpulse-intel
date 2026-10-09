@@ -58,17 +58,7 @@ class MongoManager:
         await self._client.admin.command("ping")
         logger.info("mongodb.connected", database=self._settings.database)
 
-        if self._settings.skip_index_ensure:
-            logger.info("mongodb.indexes_skipped")
-            return
-        try:
-            await self._ensure_indexes()
-        except Exception as exc:
-            logger.warning(
-                "mongodb.indexes_failed",
-                error_type=type(exc).__name__,
-                error_code=getattr(exc, "code", None),
-            )
+        await self._ensure_indexes(required_only=self._settings.skip_index_ensure)
 
     async def close(self) -> None:
         if self._client:
@@ -113,21 +103,22 @@ class MongoManager:
                 upsert=True,
             )
 
+        from darkpulse.nlp.geo import SURAT_NEIGHBORHOODS
+
+        surat_rule = {
+            "name": "Surat high severity",
+            "severity_min": 60,
+            "products": [],
+            "neighborhoods": sorted(SURAT_NEIGHBORHOODS),
+            "enabled": True,
+        }
+        await self.alerts_config.update_one(
+            {"_id": "default", "rules.name": "High severity (any location)", "rules": {"$size": 1}},
+            {"$set": {"rules": [surat_rule]}},
+        )
         await self.alerts_config.update_one(
             {"_id": "default"},
-            {
-                "$setOnInsert": {
-                    "rules": [
-                        {
-                            "name": "High local severity",
-                            "severity_min": 60,
-                            "products": [],
-                            "neighborhoods": [],
-                            "enabled": True,
-                        }
-                    ]
-                }
-            },
+            {"$setOnInsert": {"rules": [surat_rule]}},
             upsert=True,
         )
 
@@ -165,6 +156,10 @@ class MongoManager:
     @property
     def evidence(self) -> Any:  # noqa: ANN201
         return self.db[self._settings.evidence_collection]
+
+    @property
+    def export_manifests(self) -> Any:  # noqa: ANN201
+        return self.db["export_manifests"]
 
     @property
     def audit(self) -> Any:  # noqa: ANN201
@@ -209,13 +204,16 @@ class MongoManager:
         ]
         try:
             docs = await self.intel.aggregate(pipeline).to_list(length=safe_limit)
-            if docs:
-                total = await self.intel.count_documents(match)
-                return {"total": total, "records": docs}
         except OperationFailure as exc:
             if exc.code != 27:
                 raise
             logger.warning("mongodb.text_index_missing")
+            return await self._search_intel_fallback(terms, lang=lang, limit=safe_limit)
+        if docs:
+            total = await self.intel.count_documents(match)
+            return {"total": total, "records": docs}
+        # the text index covers common fields but not wallets, phones, or PGP
+        # fingerprints; fall back to the regex scan for those
         return await self._search_intel_fallback(terms, lang=lang, limit=safe_limit)
 
     async def _merge_slang_synonyms(self, terms: list[str]) -> list[str]:
@@ -283,6 +281,9 @@ class MongoManager:
                     {"geo.city": {"$regex": escaped, "$options": "i"}},
                     {"evidence_snapshot.excerpt": {"$regex": escaped, "$options": "i"}},
                     {"intent.label": {"$regex": escaped, "$options": "i"}},
+                    {"entities.crypto_wallets.address": {"$regex": escaped, "$options": "i"}},
+                    {"entities.pgp_fingerprints": {"$regex": escaped, "$options": "i"}},
+                    {"entities.contacts.value": {"$regex": escaped, "$options": "i"}},
                 ]
             )
         match: dict[str, Any] = {"$or": clauses}
@@ -294,19 +295,57 @@ class MongoManager:
         total = await self.intel.count_documents(match)
         return {"total": total, "records": docs}
 
-    async def _create_index(self, collection: Any, *args: Any, **kwargs: Any) -> None:
+    async def _create_index(
+        self, collection: Any, *args: Any, required: bool = False, **kwargs: Any
+    ) -> None:
         try:
             await collection.create_index(*args, **kwargs)
         except Exception as exc:
-            logger.warning(
-                "mongodb.index_ensure_skipped",
+            logger.error(
+                "mongodb.index_ensure_failed",
                 index=str(kwargs.get("name") or (args[0] if args else "index")),
                 error_type=type(exc).__name__,
                 error_code=getattr(exc, "code", None),
             )
+            if required:
+                raise
 
-    async def _ensure_indexes(self) -> None:
-        await self._create_index(self.raw_ingest, "dedup_key", unique=True)
+    async def _ensure_indexes(self, *, required_only: bool = False) -> None:
+        existing = await self.raw_ingest.index_information()
+        if "ttl_raw_ingest" in existing:
+            try:
+                await self.raw_ingest.drop_index("ttl_raw_ingest")
+            except OperationFailure:
+                logger.info("mongodb.ttl_already_dropped")
+        if "ttl_raw_ingest_completed" not in existing:
+            await self._create_index(
+                self.raw_ingest,
+                "processing.completed_at",
+                name="ttl_raw_ingest_completed",
+                expireAfterSeconds=self._settings.raw_retention_days * 86400,
+                partialFilterExpression={"processing.completed_at": {"$exists": True}},
+                required=True,
+            )
+        await self._create_index(self.raw_ingest, "dedup_key", unique=True, required=True)
+        await self._create_index(self.intel, "intel_id", unique=True, required=True)
+        await self._create_index(
+            self.evidence,
+            "hash_sha256",
+            unique=True,
+            name="evidence_hash_unique",
+            required=True,
+        )
+        await self._create_index(
+            self.evidence,
+            "previous_hash",
+            unique=True,
+            name="evidence_previous_unique",
+            partialFilterExpression={"previous_hash": {"$type": "string"}},
+            required=True,
+        )
+        if required_only:
+            logger.info("mongodb.indexes_ensured", required_only=True)
+            return
         await self._create_index(self.raw_ingest, "ingest_id")
         await self._create_index(self.raw_ingest, "source_class")
         await self._create_index(
@@ -316,7 +355,6 @@ class MongoManager:
             self.raw_ingest, "processing.lease_expires_at", name="raw_ingest_processing_lease"
         )
 
-        await self._create_index(self.intel, "intel_id", unique=True)
         await self._create_index(self.intel, "ingest_id")
         await self._create_index(self.intel, "captured_at")
         await self._create_index(
@@ -348,9 +386,6 @@ class MongoManager:
             )
 
         await self._create_index(
-            self.raw_ingest, "captured_at", expireAfterSeconds=86400, name="ttl_raw_ingest"
-        )
-        await self._create_index(
             self.alerts_history,
             "triggered_at",
             expireAfterSeconds=2592000,
@@ -359,9 +394,6 @@ class MongoManager:
         await self._create_index(self.audit, "occurred_at", name="audit_occurred_at")
         await self._create_index(
             self.audit, [("actor", 1), ("occurred_at", -1)], name="audit_actor_time"
-        )
-        await self._create_index(
-            self.evidence, "hash_sha256", unique=True, name="evidence_hash_unique"
         )
         await self._create_index(
             self.collection_runs, "started_at", name="collection_runs_started_at"

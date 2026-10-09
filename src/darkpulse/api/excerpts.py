@@ -7,8 +7,8 @@ from typing import Any
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 _SENSITIVE = re.compile(
-    r"(?i)(?:[\w.+-]+@[\w.-]+|(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)|"
-    r"0x[a-f0-9]{40}\b|[13][a-km-zA-HJ-NP-Z1-9]{25,34})"
+    r"(?i)(?:[\w.+-]+@[\w.-]+|(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)|"
+    r"0x[a-f0-9]{40}\b|\bbc1[a-z0-9]{25,62}\b|[13][a-km-zA-HJ-NP-Z1-9]{25,34})"
 )
 
 

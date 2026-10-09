@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class CollectorCheckpoint:
     cursor: str
     updated_at: datetime
+    version: int = 0
 
     def __post_init__(self) -> None:
         if not self.cursor or len(self.cursor) > 2048:
@@ -60,7 +61,9 @@ class RedisCheckpointStore:
         *,
         prefix: str = "darkpulse:checkpoint:",
     ) -> None:
-        self._redis = Redis.from_url(redis_url, decode_responses=True)
+        self._redis = Redis.from_url(
+            redis_url, decode_responses=True, socket_connect_timeout=5, socket_timeout=10
+        )
         self._prefix = prefix
 
     def _key(self, source_id: str) -> str:
@@ -75,14 +78,32 @@ class RedisCheckpointStore:
             return CollectorCheckpoint(
                 cursor=str(payload["cursor"]),
                 updated_at=datetime.fromisoformat(str(payload["updated_at"])),
+                version=int(payload.get("version", 0)),
             )
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+            # ponytail: corrupt payload keeps the previous good value by
+            # treating it as absent; an explicit last-good cache is the
+            # upgrade if collectors ever need to survive their own bad write
             logger.warning("checkpoint.corrupt source_id=%s", source_id)
             return None
 
     async def save(self, source_id: str, checkpoint: CollectorCheckpoint) -> None:
-        payload = asdict(checkpoint)
-        payload["updated_at"] = checkpoint.updated_at.isoformat()
+        # ponytail: CAS on version keeps the highest value; a lost update
+        # raises so the caller retries rather than silently rewinding
+        current = await self.load(source_id)
+        expected_version = current.version if current else 0
+        if checkpoint.version < expected_version:
+            raise ValueError(
+                f"checkpoint for {source_id} is stale: "
+                f"{checkpoint.version} < {expected_version}"
+            )
+        bumped = CollectorCheckpoint(
+            cursor=checkpoint.cursor,
+            updated_at=checkpoint.updated_at,
+            version=expected_version + 1,
+        )
+        payload = asdict(bumped)
+        payload["updated_at"] = bumped.updated_at.isoformat()
         await self._redis.set(
             self._key(source_id),
             json.dumps(payload, separators=(",", ":"), sort_keys=True),

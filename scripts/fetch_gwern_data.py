@@ -72,8 +72,23 @@ def extract_tar_xz(archive_path: Path, dest_dir: Path) -> bool:
 
     try:
         logger.info("Extracting %s to %s", archive_path, dest_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive_path, "r:xz") as tar:
-            tar.extractall(path=dest_dir)
+            members = tar.getmembers()
+            rejected = [
+                m.name
+                for m in members
+                if m.islnk() or m.issym() or m.isdev() or ".." in m.name.split("/")
+            ]
+            if rejected:
+                logger.error("Rejecting archive with unsafe members: %s", rejected[:5])
+                return False
+            for member in members:
+                try:
+                    tar.extract(member, path=dest_dir, filter="data")
+                except Exception:
+                    logger.exception("Failed to extract member %s", member.name)
+                    return False
         logger.info("Extraction complete")
         return True
     except Exception:

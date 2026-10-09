@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "node node_modules/oxlint/dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"

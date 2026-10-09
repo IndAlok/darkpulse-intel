@@ -15,13 +15,17 @@ async def test_mongo_publisher_writes_pending_raw_doc() -> None:
     record = MagicMock()
     record.ingest_id = "ingest-1"
     record.trace_id = "trace-1"
+    record.dedup_key = "dedup-1"
     record.model_dump.return_value = {"ingest_id": "ingest-1", "trace_id": "trace-1"}
 
-    await publisher.publish(record)
+    mongo.raw_ingest.update_one.return_value = MagicMock(upserted_id="new")
+    assert await publisher.publish(record) is True
+    mongo.raw_ingest.update_one.return_value = MagicMock(upserted_id=None)
+    assert await publisher.publish(record) is False
 
-    mongo.raw_ingest.update_one.assert_awaited_once()
+    assert mongo.raw_ingest.update_one.await_count == 2
     call = mongo.raw_ingest.update_one.await_args
-    assert call.args[0] == {"ingest_id": "ingest-1"}
+    assert call.args[0] == {"dedup_key": "dedup-1"}
     assert call.kwargs["upsert"] is True
     inserted = call.args[1]["$setOnInsert"]
     assert inserted["processing"]["status"] == "pending"

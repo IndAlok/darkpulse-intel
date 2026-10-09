@@ -10,7 +10,7 @@ from darkpulse.storage.mongodb import MongoManager
 class RecordPublisher(Protocol):
     async def start(self) -> None: ...
 
-    async def publish(self, record: RawIngest) -> None: ...
+    async def publish(self, record: RawIngest) -> bool: ...
 
     async def stop(self) -> None: ...
 
@@ -22,8 +22,9 @@ class InMemoryPublisher:
     async def start(self) -> None:
         return None
 
-    async def publish(self, record: RawIngest) -> None:
+    async def publish(self, record: RawIngest) -> bool:
         self.records.append(record)
+        return True
 
     async def stop(self) -> None:
         return None
@@ -36,13 +37,13 @@ class MongoPublisher:
     async def start(self) -> None:
         return None
 
-    async def publish(self, record: RawIngest) -> None:
+    async def publish(self, record: RawIngest) -> bool:
         now = datetime.now(UTC)
         raw_doc = record.model_dump(mode="python")
         raw_doc["ingest_id"] = str(record.ingest_id)
         raw_doc["trace_id"] = str(record.trace_id)
-        await self._mongo.raw_ingest.update_one(
-            {"ingest_id": str(record.ingest_id)},
+        result = await self._mongo.raw_ingest.update_one(
+            {"dedup_key": record.dedup_key},
             {
                 "$setOnInsert": {
                     **raw_doc,
@@ -51,6 +52,7 @@ class MongoPublisher:
             },
             upsert=True,
         )
+        return result.upserted_id is not None
 
     async def stop(self) -> None:
         return None

@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,21 +7,19 @@ from darkpulse.api.app import app
 from darkpulse.api.deps import get_mongo, get_settings
 from darkpulse.config import Settings
 
-patch("darkpulse.broker.processor.MongoProcessor.start", new_callable=AsyncMock).start()
-
 mock_mongo = AsyncMock()
 mock_settings = Settings()
 mock_settings.evidence.rfc3161_enabled = False
 
-
 @pytest.fixture
-def evidence_client():
+def evidence_client(auth_settings, auth_headers):
     app.dependency_overrides[get_mongo] = lambda: mock_mongo
     app.dependency_overrides[get_settings] = lambda: mock_settings
+    app.dependency_overrides[get_settings] = lambda: auth_settings
     with TestClient(app) as c:
+        c.headers.update(auth_headers)
         yield c
     app.dependency_overrides.clear()
-
 
 def test_seal_evidence(evidence_client: TestClient) -> None:
     mock_mongo.evidence.insert_one = AsyncMock()

@@ -15,8 +15,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { alertsApi, healthApi } from "../lib/api";
+import { PrincipalContext } from "../lib/principal";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { alertsApi, authApi, healthApi } from "../lib/api";
 import { clearAccessToken } from "../lib/auth";
 import { formatRelative } from "../lib/formatters";
 import { useApi } from "../hooks";
@@ -75,7 +76,9 @@ export default function Shell({
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const showLabels = menuOpen || !collapsed;
   const health = useApi(() => healthApi.detailed());
   const alerts = useApi(() => alertsApi.history());
   const unread = (alerts.data?.data ?? []).filter((item) => !item.acknowledged).length;
@@ -92,31 +95,47 @@ export default function Shell({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
   return (
     <div className="flex min-h-screen bg-bg text-ink">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2"
+      >
+        Skip to content
+      </a>
+      {menuOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          aria-label="Close navigation"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
       <aside
-        className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-surface ${
-          collapsed ? "w-[72px]" : "w-64"
-        }`}
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col border-r border-border bg-surface md:sticky ${
+          menuOpen ? "translate-x-0" : "-translate-x-full"
+        } md:translate-x-0 ${showLabels ? "w-64" : "w-[72px]"}`}
       >
         <div className="flex items-center gap-3 border-b border-border px-4 py-4">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-teal/15 text-teal">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal/15 text-teal">
             <ShieldCheck size={18} />
           </span>
-          {!collapsed && (
+          {showLabels && (
             <div>
               <strong className="block text-sm">DarkPulse</strong>
-              <span className="text-xs text-muted">Command center</span>
+              <span className="text-xs text-muted">Surat desk</span>
             </div>
           )}
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Primary navigation">
           {GROUPS.map((group) => (
             <section key={group.label} className="mb-4">
-              {!collapsed && (
-                <p className="px-2 pb-1 font-mono text-[10px] tracking-[0.18em] text-muted uppercase">
-                  {group.label}
-                </p>
+              {showLabels && (
+                <p className="px-2 pb-1 text-[11px] font-medium text-muted">{group.label}</p>
               )}
               {group.items.map(({ label, path, icon: Icon, match }) => (
                 <NavLink
@@ -129,22 +148,33 @@ export default function Shell({
                   }`}
                 >
                   <Icon size={16} />
-                  {!collapsed && <span>{label}</span>}
+                  <span className={showLabels ? "" : "sr-only"}>{label}</span>
                 </NavLink>
               ))}
             </section>
           ))}
         </nav>
-        <div className="border-t border-border p-3 text-xs text-muted">
-          Policy-controlled collection
-        </div>
+        {showLabels && (
+          <div className="border-t border-border p-3 text-xs text-muted">
+            Policy-controlled collection
+          </div>
+        )}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-border bg-surface/80 px-4 py-3 backdrop-blur">
+        <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
           <button
-            className="rounded border border-border p-1.5 text-muted hover:text-ink"
+            type="button"
+            className="rounded border border-border p-1.5 text-muted hover:text-ink md:hidden"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open navigation"
+          >
+            <PanelLeft size={16} />
+          </button>
+          <button
+            type="button"
+            className="hidden rounded border border-border p-1.5 text-muted hover:text-ink md:inline-flex"
             onClick={() => setCollapsed((value) => !value)}
-            aria-label="Collapse sidebar"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <PanelLeft size={16} />
           </button>
@@ -194,19 +224,23 @@ export default function Shell({
           <button
             className="text-xs text-muted hover:text-ink"
             onClick={() => {
-              clearAccessToken();
-              window.location.assign("/login");
+              void authApi
+                .logout()
+                .catch(() => undefined)
+                .finally(() => {
+                  clearAccessToken();
+                  window.location.assign("/login");
+                });
             }}
           >
             Sign out
           </button>
         </header>
-        <main className="flex-1 overflow-x-hidden p-5">{children}</main>
+        <main id="main" className="flex-1 overflow-x-hidden p-5">
+          <PrincipalContext.Provider value={principal}>{children}</PrincipalContext.Provider>
+        </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <Link to="#main" className="sr-only">
-        Skip
-      </Link>
     </div>
   );
 }

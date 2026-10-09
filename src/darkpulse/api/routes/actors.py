@@ -22,7 +22,7 @@ async def list_actors(
     request: Request,
     mongo: MongoDep,
     principal: ViewerDep,
-    q: str | None = None,
+    q: str | None = Query(default=None, max_length=200),
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
 ) -> dict[str, Any]:

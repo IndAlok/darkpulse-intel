@@ -233,6 +233,7 @@ class TestEvidenceChain:
         mongo.evidence.insert_one = AsyncMock()
         mongo.evidence.find_one = AsyncMock(return_value={"hash_sha256": "prev-hash"})
         sealer = EvidenceSealer()
+        assert sealer.verify(b"payload", asyncio.run(sealer.seal(b"payload", mongo)))
         seal = asyncio.run(sealer.seal(b"payload", mongo, previous_hash="prev-hash"))
         assert seal.previous_hash == "prev-hash"
         assert seal.tsa_verified is False

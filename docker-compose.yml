@@ -1,5 +1,9 @@
-name: darkpulse
+﻿name: darkpulse
 
+# Profiles: core (redis, mongo, neo4j, backend, collector, frontend),
+# loader (one-shot Evolution loader), tor (SOCKS proxy for reviewed onion
+# seeds), observability (prometheus, grafana). Start the desk with:
+#   docker compose --profile core up -d
 networks:
   darkpulse:
     driver: bridge
@@ -9,6 +13,7 @@ volumes:
   mongo_data:
   neo4j_data:
   neo4j_logs:
+  telegram_runtime:
   prometheus_data:
   grafana_data:
 
@@ -16,7 +21,9 @@ services:
   redis:
     image: redis:7.4.9-alpine
     profiles: ["core"]
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     ports:
       - "127.0.0.1:16379:6379"
     volumes:
@@ -24,7 +31,7 @@ services:
     networks:
       - darkpulse
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -37,12 +44,14 @@ services:
       - "127.0.0.1:27017:27017"
     environment:
       MONGO_INITDB_DATABASE: darkpulse
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-darkpulse}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
     volumes:
       - mongo_data:/data/db
     networks:
       - darkpulse
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --eval \"db.adminCommand('ping')\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -54,7 +63,6 @@ services:
     profiles: ["core"]
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}
-      NEO4J_PLUGINS: '["apoc"]'
     ports:
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
@@ -64,11 +72,15 @@ services:
     networks:
       - darkpulse
     healthcheck:
-      test: ["CMD", "neo4j", "status"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell -a bolt://localhost:7687 -u neo4j -p \"$${NEO4J_AUTH#neo4j/}\" 'RETURN 1' >/dev/null",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
 
   backend:
@@ -87,10 +99,10 @@ services:
       DARKPULSE_LOG_LEVEL: ${DARKPULSE_LOG_LEVEL:-INFO}
       DARKPULSE_API_PORT: 8080
       DARKPULSE_FRONTEND_ORIGIN: ${DARKPULSE_FRONTEND_ORIGIN:-http://localhost:5173}
-      DARKPULSE_AUTH_ENABLED: ${DARKPULSE_AUTH_ENABLED:-false}
-      DARKPULSE_AUTH_TOKENS_JSON: ${DARKPULSE_AUTH_TOKENS_JSON:-}
-      DARKPULSE_REDIS_URL: ${DARKPULSE_REDIS_URL:-redis://redis:6379/0}
-      DARKPULSE_MONGODB_URI: mongodb://mongodb:27017
+      DARKPULSE_AUTH_ENABLED: ${DARKPULSE_AUTH_ENABLED:-true}
+      DARKPULSE_AUTH_TOKENS_JSON: ${DARKPULSE_AUTH_TOKENS_JSON:?Set DARKPULSE_AUTH_TOKENS_JSON in .env}
+      DARKPULSE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DARKPULSE_MONGODB_URI: mongodb://${MONGO_ROOT_USER:-darkpulse}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
       DARKPULSE_MONGODB_DATABASE: darkpulse
       DARKPULSE_NEO4J_URI: bolt://neo4j:7687
       DARKPULSE_NEO4J_USER: neo4j
@@ -133,8 +145,8 @@ services:
       - path: .env
         required: false
     environment:
-      DARKPULSE_REDIS_URL: ${DARKPULSE_REDIS_URL:-redis://redis:6379/0}
-      DARKPULSE_MONGODB_URI: mongodb://mongodb:27017
+      DARKPULSE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DARKPULSE_MONGODB_URI: mongodb://${MONGO_ROOT_USER:-darkpulse}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
       DARKPULSE_MONGODB_DATABASE: darkpulse
       DARKPULSE_CONTRACT_PATH: /app/contracts/contract1-raw-ingest.schema.json
       DARKPULSE_SAFETY_POLICY_PATH: /app/safety/policy/prepublish-v1.json
@@ -180,14 +192,16 @@ services:
       - path: .env
         required: false
     environment:
-      DARKPULSE_REDIS_URL: ${DARKPULSE_REDIS_URL:-redis://redis:6379/0}
-      DARKPULSE_MONGODB_URI: mongodb://mongodb:27017
+      DARKPULSE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DARKPULSE_MONGODB_URI: mongodb://${MONGO_ROOT_USER:-darkpulse}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
       DARKPULSE_MONGODB_DATABASE: darkpulse
       DARKPULSE_CONTRACT_PATH: /app/contracts/contract1-raw-ingest.schema.json
       DARKPULSE_SAFETY_POLICY_PATH: /app/safety/policy/prepublish-v1.json
       DARKPULSE_SOURCES_PATH: /app/config/sources.json
       DARKPULSE_ONION_REVIEW_POLICY_PATH: /app/config/onion-review.json
-      COLLECT_INTERVAL: ${COLLECT_INTERVAL:-300}
+      DARKPULSE_TOR_PROXY_URL: socks5://tor:9050
+      DARKPULSE_TELEGRAM_RUNTIME_ROOT: /app/runtime/telegram
+      DARKPULSE_TELEGRAM_SESSION_PATH: /app/runtime/telegram/darkpulse
     command:
       - python
       - -m
@@ -195,7 +209,7 @@ services:
       - collect-all
       - --loop
       - --interval
-      - "300"
+      - "${COLLECT_INTERVAL:-300}"
     depends_on:
       redis:
         condition: service_healthy
@@ -206,7 +220,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-      - /app/runtime
+    volumes:
+      - telegram_runtime:/app/runtime/telegram
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -220,7 +235,6 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-/api/v1}
-        VITE_API_TOKEN: ${VITE_API_TOKEN:-}
     environment:
       BACKEND_UPSTREAM: http://backend:8080
     profiles: ["core"]
@@ -249,6 +263,7 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - prometheus_data:/prometheus
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
       - darkpulse
     restart: unless-stopped

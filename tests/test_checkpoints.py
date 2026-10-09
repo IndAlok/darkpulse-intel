@@ -41,6 +41,11 @@ async def test_redis_checkpoint_is_content_free_json() -> None:
     assert "raw_content" not in saved_payload
 
     store._redis.get.return_value = saved_payload
-    assert await store.load("source-a") == checkpoint
+    reloaded = await store.load("source-a")
+    assert reloaded == CollectorCheckpoint(
+        cursor=checkpoint.cursor,
+        updated_at=checkpoint.updated_at,
+        version=checkpoint.version + 1,
+    )
     await store.close()
     store._redis.aclose.assert_awaited_once()

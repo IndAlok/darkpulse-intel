@@ -1,6 +1,7 @@
-import { Download, Languages, MapPin, ShieldCheck } from "lucide-react";
+﻿import { Download, Languages, MapPin, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
-import { exportApi, intelApi } from "../lib/api";
+import { exportApi, intelApi, saveArtifact } from "../lib/api";
+import { usePrincipal } from "../lib/principal";
 import { formatDate, formatObject } from "../lib/formatters";
 import { useApi } from "../hooks";
 import {
@@ -31,16 +32,13 @@ export default function IntelDetailDrawer({
     intelId,
   );
   const record = detail.data?.data;
+  const isViewer = usePrincipal()?.role === "viewer";
+  const hidden = isViewer ? "Hidden for viewer role" : "None";
   const [toast, setToast] = useState<string | null>(null);
   const download = async () => {
     if (!intelId) return;
     try {
-      const artifact = await exportApi.report("pdf", [intelId]);
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(artifact.blob);
-      link.download = artifact.filename;
-      link.click();
-      URL.revokeObjectURL(link.href);
+      saveArtifact(await exportApi.report("pdf", [intelId]));
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Export failed");
     }
@@ -69,12 +67,14 @@ export default function IntelDetailDrawer({
                   <Confidence value={record.confidence ?? 0} />
                 </p>
               </div>
-              <button
-                className="inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-ink"
-                onClick={() => void download()}
-              >
-                <Download size={15} /> Export
-              </button>
+              {!isViewer && (
+                <button
+                  className="inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-ink"
+                  onClick={() => void download()}
+                >
+                  <Download size={15} /> Export
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
@@ -122,6 +122,29 @@ export default function IntelDetailDrawer({
                   .map((vendor) => vendor.alias)
                   .filter(Boolean)
                   .join(", ") || "None"}
+              </p>
+              <p className="mt-1 text-sm text-ink">
+                Wallets:{" "}
+                {(record.entities?.crypto_wallets || [])
+                  .map((wallet) => wallet.address)
+                  .filter(Boolean)
+                  .join(", ") || hidden}
+              </p>
+              <p className="mt-1 text-sm text-ink">
+                Contacts:{" "}
+                {(record.entities?.contacts || [])
+                  .map((contact) => contact.value_redacted)
+                  .filter(Boolean)
+                  .join(", ") || hidden}
+              </p>
+              <p className="mt-1 text-sm text-ink">
+                Identity hypotheses (unconfirmed):{" "}
+                {(record.actor_links || [])
+                  .map(
+                    (link) =>
+                      `${link.from} ${link.relation} ${link.to} (${Math.round(link.confidence * 100)}%)`,
+                  )
+                  .join("; ") || hidden}
               </p>
             </section>
             <DataState

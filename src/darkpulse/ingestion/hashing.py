@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -36,7 +37,7 @@ def canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
 
 
 def sanitize_source_ref(source_ref: str) -> str:
-    source_ref = source_ref.strip()
+    source_ref = unicodedata.normalize("NFC", source_ref).strip()
     try:
         parsed = urlsplit(source_ref)
     except ValueError:
@@ -73,6 +74,8 @@ def sanitize_source_ref(source_ref: str) -> str:
             "",
         )
     )
+    # ponytail: truncate before the hash so refs differing only past 2048
+    # still collide by content, not by truncation
     return sanitized[:2048]
 
 

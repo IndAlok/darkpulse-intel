@@ -12,7 +12,11 @@ def build_runtime_dictionary(
     dictionary = SlangDictionary()
     dictionary.load_seed(seed_path)
     for entry in entries:
-        if entry.get("review_status", "approved") != "approved":
+        status = entry.get("review_status", "approved")
+        if status == "rejected":
+            dictionary.remove_entry(str(entry["term"]))
+            continue
+        if status != "approved":
             continue
         dictionary.add_entry(
             SlangEntry(

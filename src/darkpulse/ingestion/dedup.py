@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from typing import Protocol
@@ -10,6 +10,8 @@ class DedupStore(Protocol):
     async def reserve(self, dedup_key: str) -> bool: ...
 
     async def commit(self, dedup_key: str) -> None: ...
+
+    async def forget(self, dedup_key: str) -> None: ...
 
     async def release(self, dedup_key: str) -> None: ...
 
@@ -36,6 +38,10 @@ class InMemoryDedupStore:
         async with self._lock:
             if self._states.get(dedup_key) == "pending":
                 self._states.pop(dedup_key, None)
+
+    async def forget(self, dedup_key: str) -> None:
+        async with self._lock:
+            self._states.pop(dedup_key, None)
 
     async def close(self) -> None:
         return None
@@ -64,7 +70,9 @@ class RedisDedupStore:
         pending_ttl_seconds: int = 300,
         prefix: str = "darkpulse:dedup:",
     ) -> None:
-        self._redis = Redis.from_url(redis_url, decode_responses=True)
+        self._redis = Redis.from_url(
+            redis_url, decode_responses=True, socket_connect_timeout=5, socket_timeout=10
+        )
         self._ttl_seconds = ttl_seconds
         self._pending_ttl_seconds = pending_ttl_seconds
         self._prefix = prefix
@@ -96,6 +104,9 @@ class RedisDedupStore:
             self._key(dedup_key),
             "pending",
         )
+
+    async def forget(self, dedup_key: str) -> None:
+        await self._redis.delete(self._key(dedup_key))
 
     async def ping(self) -> bool:
         return bool(await self._redis.ping())

@@ -81,7 +81,7 @@ def detect_username_links(
         for canonical_id, known_list in known_aliases.items():
             for known_alias in known_list:
                 known_normalized = normalize_username(known_alias)
-                if not known_normalized:
+                if not known_normalized or canonical_id == alias:
                     continue
 
                 if normalized == known_normalized:

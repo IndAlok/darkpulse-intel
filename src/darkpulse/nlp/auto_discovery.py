@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,14 +37,17 @@ class SlangAutoDiscovery:
         min_occurrences: int = 3,
         max_candidates: int = 100,
         fasttext_model_path: str | None = None,
+        max_tracked_terms: int = 50_000,
     ) -> None:
         self._similarity_threshold = similarity_threshold
         self._min_occurrences = min_occurrences
         self._max_candidates = max_candidates
         self._fasttext_model_path = fasttext_model_path
 
-        self._term_counts: dict[str, int] = {}
-        self._term_contexts: dict[str, list[str]] = {}
+        # bounded ring so long uptime cannot grow memory without limit
+        self._term_counts: OrderedDict[str, int] = OrderedDict()
+        self._term_contexts: OrderedDict[str, list[str]] = OrderedDict()
+        self._max_tracked_terms = max_tracked_terms
 
         self._known_terms: set[str] = set()
 
@@ -114,12 +118,18 @@ class SlangAutoDiscovery:
             return
 
         self._term_counts[term_lower] = self._term_counts.get(term_lower, 0) + 1
+        self._term_counts.move_to_end(term_lower)
+        while len(self._term_counts) > self._max_tracked_terms:
+            self._term_counts.popitem(last=False)
 
         if context:
             if term_lower not in self._term_contexts:
                 self._term_contexts[term_lower] = []
+                self._term_contexts.move_to_end(term_lower)
             if len(self._term_contexts[term_lower]) < 10:
                 self._term_contexts[term_lower].append(context[:200])
+            while len(self._term_contexts) > self._max_tracked_terms:
+                self._term_contexts.popitem(last=False)
 
     def discover_candidates(self) -> list[CandidateTerm]:
         candidate_terms = {

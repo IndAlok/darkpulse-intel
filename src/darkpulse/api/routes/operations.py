@@ -1,14 +1,20 @@
+from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from darkpulse.api.audit import audit_event
 from darkpulse.api.deps import MongoDep, SettingsDep
+from darkpulse.api.routes.alerts import _validate_id
 from darkpulse.api.security import AdminDep
 from darkpulse.ingestion.collectors.registry import SourceRegistry
 from darkpulse.models import ApiEnvelope
 
 router = APIRouter(prefix="/operations", tags=["Operations"])
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
 @router.get("/sources", response_model=ApiEnvelope)
@@ -156,3 +162,38 @@ async def list_collection_runs(
             "next_due": "every 300s while the collector loop is running",
         },
     }
+
+
+@router.post("/dead-letter/{ingest_id}/retry", response_model=ApiEnvelope)
+async def retry_dead_letter(
+    ingest_id: str,
+    request: Request,
+    mongo: MongoDep,
+    principal: AdminDep,
+) -> dict[str, Any]:
+    _validate_id(ingest_id, "ingest_id")
+    result = await mongo.raw_ingest.update_one(
+        {"ingest_id": ingest_id, "processing.status": "exhausted"},
+        {
+            "$set": {
+                "processing.status": "pending",
+                "processing.attempts": 0,
+                "processing.updated_at": _now(),
+                "processing.last_error": None,
+            }
+        },
+    )
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Dead-letter record not found (status must be exhausted)",
+        )
+    await audit_event(
+        mongo,
+        request,
+        principal,
+        "operations.dead_letter.retry",
+        target_type="raw_ingest",
+        target_id=ingest_id,
+    )
+    return {"data": {"ingest_id": ingest_id, "status": "pending"}, "meta": {}}

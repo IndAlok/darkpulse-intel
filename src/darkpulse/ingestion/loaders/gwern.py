@@ -25,6 +25,19 @@ SUPPORTED_SUFFIXES = frozenset({".csv", ".htm", ".html", ".tsv"})
 csv.field_size_limit(MAX_FIELD_BYTES)
 
 
+_MARKET_GEO_HINTS: dict[str, str] = {
+    "evolution": "unknown",
+    "agora": "unknown",
+    "silk-road": "unknown",
+    "silkroad": "unknown",
+    "silk road": "unknown",
+}
+
+
+def _market_geo_hint(market: str) -> str | None:
+    return _MARKET_GEO_HINTS.get(market.strip().casefold())
+
+
 class GwernArchiveLoader:
     def __init__(
         self,
@@ -189,6 +202,7 @@ class GwernArchiveLoader:
         source_ref = f"dataset://gwern/{encoded_path}"
         if row_number is not None:
             source_ref = f"{source_ref}?row={row_number}"
+        geo_hints = (geo_hint,) if (geo_hint := _market_geo_hint(market)) else ()
         return SourceRecord(
             source_class=SourceClass.DNM_DATASET,
             source_ref=source_ref,
@@ -196,8 +210,9 @@ class GwernArchiveLoader:
             mime_type=mime_type,
             raw_content=raw_content,
             source_bytes=source_bytes,
-            captured_at=observed_at,
+            captured_at=datetime.now(UTC),
             source_observed_at=observed_at,
+            geo_hints=geo_hints,
             crawl_metadata=CrawlMetadata(source_item_id=source_item_id),
             source_metadata={
                 "dataset": DATASET_NAME,

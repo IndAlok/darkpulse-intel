@@ -22,7 +22,10 @@ async def audit_event(
     target_type: str | None = None,
     target_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    required: bool | None = None,
 ) -> None:
+    method = getattr(request, "method", "WS")
+    must_record = method not in {"GET", "WS"} if required is None else required
     try:
         await db.audit.insert_one(
             {
@@ -33,10 +36,12 @@ async def audit_event(
                 "target_type": target_type,
                 "target_id": target_id,
                 "path": request.url.path,
-                "method": getattr(request, "method", "WS"),
+                "method": method,
                 "ip": request.client.host if request.client else None,
                 "metadata": metadata or {},
             }
         )
     except Exception:
         logger.exception("audit.write_failed", action=action)
+        if must_record:
+            raise

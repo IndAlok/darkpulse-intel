@@ -13,11 +13,12 @@ export function formatRelative(value?: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "unknown";
   const delta = Date.now() - date.getTime();
+  if (delta < -60000) return "upcoming";
   const minutes = Math.round(delta / 60000);
-  if (Math.abs(minutes) < 1) return "just now";
-  if (Math.abs(minutes) < 60) return `${minutes}m ago`;
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
-  if (Math.abs(hours) < 48) return `${hours}h ago`;
+  if (hours < 48) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   return `${days}d ago`;
 }

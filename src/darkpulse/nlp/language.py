@@ -181,16 +181,27 @@ def replace_emoji(text: str, emoji_map: dict[str, str] | None = None) -> tuple[s
     return result, had_emoji
 
 
+_QUANTITY_TOKEN = re.compile(r"(?i)^\W*(?:rs\.?|inr|₹|\$)?\d[\d.,]*[a-z]{0,3}\W*$")
+
+
+def _foldable(token: str) -> bool:
+    if token.startswith("@") or "://" in token or len(token) >= 25:
+        return False
+    if "@" in token and "." in token.split("@", 1)[1]:
+        return False
+    if _QUANTITY_TOKEN.match(token):
+        return False
+    return sum(char.isalpha() for char in token) >= 2 and any(c in LEET_MAP for c in token)
+
+
 def fold_leetspeak(text: str) -> tuple[str, bool]:
+    parts = re.split(r"(\s+)", text)
     had_leetspeak = False
-    result = list(text)
-
-    for i, char in enumerate(result):
-        if char in LEET_MAP:
-            result[i] = LEET_MAP[char]
+    for index, part in enumerate(parts):
+        if _foldable(part):
+            parts[index] = "".join(LEET_MAP.get(char, char) for char in part)
             had_leetspeak = True
-
-    return "".join(result), had_leetspeak
+    return "".join(parts), had_leetspeak
 
 
 def normalize_whitespace(text: str) -> str:
@@ -229,8 +240,7 @@ def detect_language_info(text: str) -> LanguageInfo:
         detected = [lang for lang, _ in fasttext_results[:3]]
     else:
         fallback = detect_language_langdetect(text)
-        if fallback is not None:
-            detected = [fallback[0]]
+        detected = [fallback[0]] if fallback is not None else ["unknown"]
 
     code_mixed = is_code_mixed(text)
 

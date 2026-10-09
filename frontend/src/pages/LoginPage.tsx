@@ -32,7 +32,7 @@ export default function LoginPage({
     <div className="grid min-h-screen place-items-center bg-bg px-4">
       <form
         onSubmit={(event) => void submit(event)}
-        className="w-full max-w-md rounded-2xl border border-border bg-surface p-8"
+        className="w-full max-w-md rounded-lg border border-border bg-surface p-8"
       >
         <div className="mb-6 flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-lg bg-teal/15 text-teal">

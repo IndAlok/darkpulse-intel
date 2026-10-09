@@ -9,8 +9,8 @@
   --color-muted: #8aa0b2;
   --color-teal: #2ee6c7;
   --color-navy: #9ec5ff;
-  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 html {
@@ -31,4 +31,9 @@ body {
 
 * {
   scrollbar-color: #243140 #070b10;
+}
+
+:focus-visible {
+  outline: 2px solid #2ee6c7;
+  outline-offset: 2px;
 }

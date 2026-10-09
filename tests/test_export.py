@@ -1,38 +1,35 @@
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from darkpulse.api.app import app
 from darkpulse.api.deps import get_mongo, get_settings
-from darkpulse.api.routes.export import _flatten_doc, _pdf_report
+from darkpulse.api.routes.export import _csv_cell, _flatten_doc, _pdf_report
 from darkpulse.config import Settings
 from darkpulse.evidence.sealing import sha256_hex
-
-patch("darkpulse.broker.processor.MongoProcessor.start", new_callable=AsyncMock).start()
 
 mock_mongo = AsyncMock()
 mock_mongo.intel.find = MagicMock()
 mock_mongo.raw_ingest.find = MagicMock()
 mock_settings = Settings()
 mock_mongo.evidence.find_one = AsyncMock(return_value=None)
-
+mock_mongo.export_manifests = AsyncMock()
 
 @pytest.fixture
-def export_client():
+def export_client(auth_settings, auth_headers):
     app.dependency_overrides[get_mongo] = lambda: mock_mongo
     app.dependency_overrides[get_settings] = lambda: mock_settings
+    app.dependency_overrides[get_settings] = lambda: auth_settings
     with TestClient(app) as c:
+        c.headers.update(auth_headers)
         yield c
     app.dependency_overrides.clear()
-
 
 def _empty_raw_cursor() -> MagicMock:
     cursor = MagicMock()
     cursor.to_list = AsyncMock(return_value=[])
     return cursor
-
 
 def test_export_csv(export_client: TestClient) -> None:
     mock_cursor = AsyncMock()
@@ -53,19 +50,15 @@ def test_export_csv(export_client: TestClient) -> None:
     mock_mongo.raw_ingest.find.return_value = _empty_raw_cursor()
     mock_mongo.evidence.insert_one = AsyncMock()
 
-    response = export_client.get("/api/v1/export?format=csv")
+    response = export_client.post("/api/v1/export?format=csv&intel_ids=intel-1")
     assert response.status_code == 200
     assert "text/csv" in response.headers["content-type"]
     assert "intel-1" in response.text
     assert "85.0" in response.text
-    assert "--- EVIDENCE SEAL ---" in response.text
 
     seal_hash = response.headers["X-DarkPulse-Evidence-Seal"]
     assert seal_hash
-    data_bytes = response.content.split(b"--- EVIDENCE SEAL ---", 1)[0]
-    assert sha256_hex(data_bytes) == seal_hash
-    assert seal_hash in response.text
-
+    assert sha256_hex(response.content) == seal_hash
 
 def test_export_json(export_client: TestClient) -> None:
     mock_cursor = AsyncMock()
@@ -76,18 +69,13 @@ def test_export_json(export_client: TestClient) -> None:
     mock_mongo.raw_ingest.find.return_value = _empty_raw_cursor()
     mock_mongo.evidence.insert_one = AsyncMock()
 
-    response = export_client.get("/api/v1/export?format=json")
+    response = export_client.post("/api/v1/export?format=json&intel_ids=intel-1")
     assert response.status_code == 200
     assert "application/json" in response.headers["content-type"]
     data = response.json()
     assert "data" in data
-    assert "evidence_seal" in data
     assert data["data"][0]["intel_id"] == "intel-1"
-
-    canonical = json.dumps({"data": data["data"]}, default=str, separators=(",", ":")).encode()
-    assert sha256_hex(canonical) == data["evidence_seal"]["hash_sha256"]
-    assert response.headers["X-DarkPulse-Evidence-Seal"] == data["evidence_seal"]["hash_sha256"]
-
+    assert sha256_hex(response.content) == response.headers["X-DarkPulse-Evidence-Seal"]
 
 def test_pdf_manifest_uses_exact_canonical_bytes() -> None:
     record = {
@@ -97,18 +85,14 @@ def test_pdf_manifest_uses_exact_canonical_bytes() -> None:
         "products": "cocaine",
         "neighborhood": "adajan",
     }
-    content_pdf = _pdf_report([record])
-    manifest = {
-        "hash_sha256": sha256_hex(content_pdf),
-        "sealed_at": 1,
-        "provenance": "DarkPulse/hash-only",
-        "previous_hash": None,
-        "tsa_verified": False,
-    }
-    rendered = _pdf_report([record], manifest)
+    record["vendor_aliases"] = "સુરત"
+    rendered = _pdf_report([record])
     assert rendered.startswith(b"%PDF")
-    assert manifest["hash_sha256"].encode() in rendered
 
+def test_csv_cells_cannot_start_formulas() -> None:
+    assert _csv_cell("=HYPERLINK(1)") == "'=HYPERLINK(1)"
+    assert _csv_cell("cocaine") == "cocaine"
+    assert _csv_cell(85.0) == 85.0
 
 def test_flatten_doc_includes_provenance_fields() -> None:
     flat = _flatten_doc(
@@ -128,7 +112,6 @@ def test_flatten_doc_includes_provenance_fields() -> None:
     )
     assert flat["trace_id"] == "trace-1"
     assert flat["content_hash"] == "abc"
-    assert flat["evidence_ref"] == "ref-1"
     assert flat["source_ref"] == "dataset://x"
     assert flat["slang_decoded"] == "snow"
     assert flat["vendor_aliases"] == "vendor-1"

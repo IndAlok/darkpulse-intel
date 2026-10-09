@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = "1.0.0"
 SHA256_PATTERN = r"^[a-f0-9]{64}$"
@@ -353,11 +354,24 @@ class WatchlistCreate(BaseModel):
             raise ValueError("terms must contain at least one non-empty term")
         if any(len(term) > 200 for term in cleaned):
             raise ValueError("each term must be at most 200 characters")
+        if any(len(term) < 2 for term in cleaned):
+            raise ValueError("each term must be at least 2 characters")
         return cleaned
 
 
-class WatchlistUpdate(WatchlistCreate):
+class WatchlistUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    terms: list[str] | None = Field(default=None, min_length=1, max_length=1000)
+    notify: bool = True
     enabled: bool = True
+
+    @field_validator("terms")
+    @classmethod
+    def validate_terms(cls, terms: list[str]) -> list[str]:
+        cleaned = [term.strip() for term in terms if term.strip()]
+        if not cleaned:
+            raise ValueError("terms must contain at least one non-empty term")
+        return cleaned
 
 
 class WatchlistResponse(WatchlistUpdate):
@@ -371,12 +385,32 @@ class WatchlistListResponse(ApiEnvelope):
     data: list[WatchlistResponse] = Field(default_factory=list)
 
 
+_PLACEHOLDER_MEANINGS = {
+    "", "unknown", "tbd", "n/a", "na", "none", "placeholder", "todo", "meaning",
+}
+
+_INVISIBLE_CHARS = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
 class SlangEntry(BaseModel):
     term: str = Field(min_length=1, max_length=200)
     meaning: str = Field(min_length=1, max_length=200)
     lang: str = Field(default="en", min_length=1, max_length=32)
     confidence: float = Field(default=1.0, ge=0, le=1)
     newly_discovered: bool = False
+
+    @model_validator(mode="after")
+    def reject_placeholder_meaning(self) -> SlangEntry:
+        if self.meaning.strip().casefold() in _PLACEHOLDER_MEANINGS:
+            raise ValueError("meaning must not be empty or a placeholder")
+        return self
+
+    @field_validator("term")
+    @classmethod
+    def reject_invisible_characters(cls, value: str) -> str:
+        if _INVISIBLE_CHARS.search(value):
+            raise ValueError("term must not contain zero-width or control characters")
+        return value
 
 
 class SlangUpdate(SlangEntry):
@@ -400,6 +434,7 @@ class AlertRule(BaseModel):
     products: list[str] = Field(default_factory=list, max_length=200)
     neighborhoods: list[str] = Field(default_factory=list, max_length=200)
     enabled: bool = True
+    audience: Literal["viewer", "analyst", "administrator"] = "viewer"
 
 
 class AlertConfig(BaseModel):

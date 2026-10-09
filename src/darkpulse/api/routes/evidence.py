@@ -2,14 +2,17 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from pymongo.errors import DuplicateKeyError
 
 from darkpulse.api.audit import audit_event
 from darkpulse.api.deps import MongoDep, SettingsDep
+from darkpulse.api.routes.alerts import _validate_id
 from darkpulse.api.security import AnalystDep, ViewerDep
-from darkpulse.evidence.sealing import EvidenceSealer
+from darkpulse.evidence.sealing import EvidenceSealer, sha256_hex
 from darkpulse.models import ApiEnvelope
 
 router = APIRouter(prefix="/evidence", tags=["Evidence"])
+_VERIFY_CAP = 100_000
 
 
 class EvidenceSealRequest(BaseModel):
@@ -17,7 +20,7 @@ class EvidenceSealRequest(BaseModel):
 
 
 class EvidenceVerifyRequest(BaseModel):
-    payload: str = Field(min_length=1, max_length=100_000)
+    payload: str = Field(min_length=1, max_length=5_000_000)
     hash_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
@@ -35,15 +38,20 @@ async def generate_seal(
     db: MongoDep,
     settings: SettingsDep,
 ) -> dict[str, Any]:
-    last = await db.evidence.find_one(sort=[("sealed_at", -1)])
-    previous_hash = last.get("hash_sha256") if last else None
-
-    sealer = EvidenceSealer(
-        tsa_url=settings.evidence.rfc3161_tsa_url,
-        rfc3161_enabled=settings.evidence.rfc3161_enabled,
-    )
-    seal = await sealer.seal(payload, db, previous_hash=previous_hash)
-    return seal.model_dump()
+    sealer = EvidenceSealer()
+    payload_hash = sha256_hex(payload)
+    for _ in range(5):
+        existing = await db.evidence.find_one({"hash_sha256": payload_hash})
+        if existing:
+            return {key: value for key, value in existing.items() if key != "_id"}
+        last = await db.evidence.find_one(sort=[("_id", -1)])
+        previous_hash = last.get("hash_sha256") if last else None
+        try:
+            seal = await sealer.seal(payload, db, previous_hash=previous_hash)
+        except DuplicateKeyError:
+            continue
+        return seal.model_dump()
+    raise HTTPException(status_code=409, detail="Evidence chain conflict")
 
 
 @router.post("/seal", response_model=ApiEnvelope)
@@ -54,15 +62,16 @@ async def seal_evidence(
     settings: SettingsDep,
     principal: AnalystDep,
 ) -> dict[str, Any]:
-    doc = await generate_seal(req.payload.encode("utf-8"), db, settings)
+    payload = req.payload.encode("utf-8")
     await audit_event(
         db,
         request,
         principal,
         "evidence.seal",
         target_type="evidence",
-        target_id=doc["hash_sha256"],
+        target_id=sha256_hex(payload),
     )
+    doc = await generate_seal(payload, db, settings)
     return {"data": EvidenceSealResponse(**doc), "meta": {}}
 
 
@@ -99,8 +108,9 @@ async def verify_payload(
 
 @router.get("/verify")
 async def verify_chain(request: Request, db: MongoDep, principal: ViewerDep) -> dict[str, Any]:
-    cursor = db.evidence.find().sort("sealed_at", 1)
-    docs = await cursor.to_list(length=10000)
+    docs = await db.evidence.find().sort("_id", 1).to_list(length=_VERIFY_CAP + 1)
+    truncated = len(docs) > _VERIFY_CAP
+    docs = docs[:_VERIFY_CAP]
 
     breaks = []
     previous = None
@@ -125,8 +135,9 @@ async def verify_chain(request: Request, db: MongoDep, principal: ViewerDep) -> 
     )
     return {
         "data": {
-            "verified": len(breaks) == 0,
+            "verified": not breaks and not truncated,
             "record_count": len(docs),
+            "truncated": truncated,
             "breaks": breaks,
         },
         "meta": {},
@@ -137,6 +148,7 @@ async def verify_chain(request: Request, db: MongoDep, principal: ViewerDep) -> 
 async def get_evidence_seal(
     hash_sha256: str, request: Request, db: MongoDep, principal: ViewerDep
 ) -> dict[str, Any]:
+    _validate_id(hash_sha256, "hash_sha256")
     doc = await db.evidence.find_one({"hash_sha256": hash_sha256}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Evidence seal not found")

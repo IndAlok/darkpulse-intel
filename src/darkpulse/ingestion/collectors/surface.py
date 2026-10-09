@@ -40,6 +40,11 @@ ALLOWED_MIME_TYPES = frozenset(
         "text/xml",
     }
 )
+DEFAULT_USER_AGENT = (
+    "darkpulse-collector/1.0 (+https://example.invalid/darkpulse; observe-only)"
+)
+CRAWL_DELAY_SECONDS = 1.0
+_robots_cache: dict[str, float] = {}
 SENSITIVE_QUERY_KEYS = frozenset(
     {"access_token", "api_key", "apikey", "auth", "key", "password", "secret", "token"}
 )
@@ -81,11 +86,29 @@ async def _assert_resolved_hostname_public(hostname: str) -> None:
     loop = asyncio.get_running_loop()
     try:
         infos = await loop.getaddrinfo(hostname, None)
-    except OSError:
-        return
+    except OSError as exc:
+        raise ValueError("surface source hostname did not resolve") from exc
     resolved = sorted({str(info[4][0]) for info in infos})
     if resolved and not _hostname_is_public(resolved):
         raise ValueError("surface source hostname resolves to a non-public address")
+
+
+async def _obey_crawl_delay(hostname: str) -> None:
+    """One request per CRAWL_DELAY_SECONDS per host.
+
+    ponytail: in-process cache; a shared Redis limiter is the upgrade when
+    more than one collector process shares a host.
+    """
+    import time
+
+    now = time.monotonic()
+    last = _robots_cache.get(hostname, 0.0)
+    wait = CRAWL_DELAY_SECONDS - (now - last)
+    if wait > 0:
+        import asyncio
+
+        await asyncio.sleep(wait)
+    _robots_cache[hostname] = time.monotonic()
 
 
 class SurfaceCollector(BaseCollector):
@@ -115,12 +138,14 @@ class SurfaceCollector(BaseCollector):
     async def _collect(self) -> AsyncIterator[SourceRecord]:
         try:
             await _assert_resolved_hostname_public(urlsplit(self._source.locator).hostname or "")
+            await _obey_crawl_delay(urlsplit(self._source.locator).hostname or "")
             result = await self._http.fetch(
                 source_id=self.source_id,
                 url=self._source.locator,
                 max_response_bytes=self._source.max_response_bytes,
                 timeout_seconds=self._source.request_timeout_seconds,
                 allowed_mime_types=ALLOWED_MIME_TYPES,
+                user_agent=DEFAULT_USER_AGENT,
             )
             raw_content, content_type = self._extract_content(result.body, result.mime_type)
         except CollectionError as error:

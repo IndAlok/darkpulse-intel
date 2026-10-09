@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from typing import Protocol
@@ -39,7 +39,9 @@ class RedisContentStateStore:
         prefix: str = "darkpulse:content-state:",
         ttl_seconds: int = 7776000,
     ) -> None:
-        self._redis = Redis.from_url(redis_url, decode_responses=True)
+        self._redis = Redis.from_url(
+            redis_url, decode_responses=True, socket_connect_timeout=5, socket_timeout=10
+        )
         self._prefix = prefix
         self._ttl_seconds = ttl_seconds
 

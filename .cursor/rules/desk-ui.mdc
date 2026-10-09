@@ -1,0 +1,18 @@
+---
+description: Visual rules for the DarkPulse investigator desk
+globs: frontend/src/**/*.{tsx,css}
+alwaysApply: false
+---
+
+# Desk UI
+
+Read `frontend/DESIGN.md` before changing layout or color.
+
+- Keep the current route, filter, and role behavior.
+- Keep the existing color tokens. Do not introduce a second palette.
+- No glass, backdrop blur, gradient text, glow, or decorative motion.
+- No dashboard hero, eyebrow slogan, or metric that is not a real query result.
+- Buttons and filters use a small radius. Status chips may stay pills.
+- A collapsed or overlay nav link keeps a text name.
+- Focus uses the teal `:focus-visible` ring from `index.css`.
+- Empty and error text names the task and the next action.

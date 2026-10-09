@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+﻿import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import IntelDetailDrawer from "../components/IntelDetailDrawer";
@@ -13,7 +13,8 @@ import {
   SourceBadge,
   Toast,
 } from "../components/Ui";
-import { exportApi, intelApi } from "../lib/api";
+import { usePrincipal } from "../lib/principal";
+import { exportApi, intelApi, saveArtifact } from "../lib/api";
 import { formatDate } from "../lib/formatters";
 import { resolveIntelId } from "../lib/intel";
 import { useApi, useDebouncedValue } from "../hooks";
@@ -40,6 +41,7 @@ export default function IntelFeedPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [tone, setTone] = useState<"success" | "error">("success");
   const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const canExport = usePrincipal()?.role !== "viewer";
   const filters = useMemo(
     () =>
       Object.fromEntries(
@@ -64,7 +66,7 @@ export default function IntelFeedPage() {
     else next.delete(key);
     next.delete("cursor");
     setCursorStack([]);
-    setSearchParams(next);
+    setSearchParams(next, { replace: true });
   };
 
   const exportSelected = async (format: ExportFormat) => {
@@ -74,12 +76,7 @@ export default function IntelFeedPage() {
       return;
     }
     try {
-      const artifact = await exportApi.report(format, selected);
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(artifact.blob);
-      link.download = artifact.filename;
-      link.click();
-      URL.revokeObjectURL(link.href);
+      saveArtifact(await exportApi.report(format, selected));
       setTone("success");
       setMessage(`Exported ${selected.length} records`);
     } catch (error) {
@@ -95,17 +92,19 @@ export default function IntelFeedPage() {
         title="Intelligence"
         description="URL-backed filters over sanitized TraffickingIntel summaries."
         action={
-          <div className="flex gap-2">
-            {(["csv", "json", "pdf"] as ExportFormat[]).map((format) => (
-              <button
-                key={format}
-                className="inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-xs uppercase"
-                onClick={() => void exportSelected(format)}
-              >
-                <Download size={13} /> {format}
-              </button>
-            ))}
-          </div>
+          canExport ? (
+            <div className="flex gap-2">
+              {(["csv", "json", "pdf"] as ExportFormat[]).map((format) => (
+                <button
+                  key={format}
+                  className="inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-xs uppercase"
+                  onClick={() => void exportSelected(format)}
+                >
+                  <Download size={13} /> {format}
+                </button>
+              ))}
+            </div>
+          ) : undefined
         }
       />
       <div className="mb-4 grid gap-2 md:grid-cols-4">
@@ -139,6 +138,54 @@ export default function IntelFeedPage() {
             </option>
           ))}
         </select>
+        <input
+          aria-label="Vendor"
+          className="rounded border border-border bg-surface px-3 py-2 text-sm"
+          placeholder="Vendor"
+          value={searchParams.get("vendor") || ""}
+          onChange={(event) => setFilter("vendor", event.target.value)}
+        />
+        <select
+          aria-label="Source class"
+          className="rounded border border-border bg-surface px-3 py-2 text-sm"
+          value={searchParams.get("source_class") || ""}
+          onChange={(event) => setFilter("source_class", event.target.value)}
+        >
+          <option value="">All sources</option>
+          {["dnm_dataset", "tor_market", "tor_forum", "telegram", "surface_market", "social", "paste"].map(
+            (source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ),
+          )}
+        </select>
+        <input
+          aria-label="Minimum severity"
+          type="number"
+          min={0}
+          max={100}
+          className="rounded border border-border bg-surface px-3 py-2 text-sm"
+          placeholder="Min severity"
+          value={searchParams.get("severity_min") || ""}
+          onChange={(event) => setFilter("severity_min", event.target.value)}
+        />
+        <div className="flex gap-2">
+          <input
+            aria-label="From date"
+            type="date"
+            className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-2 text-sm"
+            value={(searchParams.get("date_from") || "").slice(0, 10)}
+            onChange={(event) => setFilter("date_from", event.target.value)}
+          />
+          <input
+            aria-label="To date"
+            type="date"
+            className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-2 text-sm"
+            value={(searchParams.get("date_to") || "").slice(0, 10)}
+            onChange={(event) => setFilter("date_to", event.target.value)}
+          />
+        </div>
       </div>
       <DataState loading={feed.loading} error={feed.error} retry={feed.reload} code={feed.errorCode}>
         {records.length ? (
@@ -190,7 +237,7 @@ export default function IntelFeedPage() {
           />
         )}
         <Pagination
-          hasPrevious={cursorStack.length > 0}
+          hasPrevious={cursorStack.length > 0 || Boolean(searchParams.get("cursor"))}
           hasNext={Boolean(feed.data?.pagination?.cursor)}
           onPrevious={() => {
             const next = new URLSearchParams(searchParams);

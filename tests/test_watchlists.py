@@ -1,26 +1,24 @@
 # ruff: noqa: S101
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from darkpulse.api.app import app
-from darkpulse.api.deps import get_mongo
-
-patch("darkpulse.broker.processor.MongoProcessor.start", new_callable=AsyncMock).start()
+from darkpulse.api.deps import get_mongo, get_settings
 
 mock_mongo = AsyncMock()
 mock_mongo.watchlists.find = MagicMock()
 app.dependency_overrides[get_mongo] = lambda: mock_mongo
 
-
 @pytest.fixture
-def wl_client():
+def wl_client(auth_settings, auth_headers):
     app.dependency_overrides[get_mongo] = lambda: mock_mongo
+    app.dependency_overrides[get_settings] = lambda: auth_settings
     with TestClient(app) as c:
+        c.headers.update(auth_headers)
         yield c
     app.dependency_overrides.clear()
-
 
 def test_get_watchlists(wl_client: TestClient) -> None:
     mock_cursor = MagicMock()
@@ -44,7 +42,6 @@ def test_get_watchlists(wl_client: TestClient) -> None:
     assert len(data["data"]) == 1
     assert data["data"][0]["id"] == "wl-1"
     assert data["data"][0]["name"] == "Opioids"
-
 
 def test_create_watchlist(wl_client: TestClient) -> None:
     mock_mongo.watchlists.insert_one = AsyncMock()

@@ -31,14 +31,21 @@ class Neo4jManager:
         self._driver: AsyncDriver | None = None
 
     async def connect(self) -> None:
-        logger.info("neo4j.connecting", uri=self._settings.uri)
-        self._driver = AsyncGraphDatabase.driver(
+        from darkpulse.storage.mongodb import _redact_uri
+
+        logger.info("neo4j.connecting", uri=_redact_uri(self._settings.uri))
+        driver = AsyncGraphDatabase.driver(
             self._settings.uri,
             auth=(self._settings.user, self._settings.password),
             max_connection_pool_size=25,
             connection_timeout=60,
         )
-        await self._driver.verify_connectivity()
+        try:
+            await driver.verify_connectivity()
+        except Exception:
+            await driver.close()
+            raise
+        self._driver = driver
         logger.info("neo4j.connected")
         await self._ensure_schema()
 
@@ -56,8 +63,14 @@ class Neo4jManager:
             start = time.monotonic()
             await self._driver.verify_connectivity()
             latency_ms = int((time.monotonic() - start) * 1000)
+            # verify_connectivity can succeed on a read-only replica; a write
+            # probe catches the Aura/read-only deployment mode
+            probe = "CREATE (probe:HealthProbe {at: datetime()}) DELETE probe"
+            async with self._driver.session(database=self._settings.database) as session:
+                await (await session.run(probe)).consume()
             return {"status": "healthy", "latency_ms": latency_ms}
-        except Exception:
+        except Exception as exc:
+            logger.warning("neo4j.health_failed", error=type(exc).__name__)
             return {"status": "unhealthy"}
 
     @property
@@ -225,8 +238,10 @@ class Neo4jManager:
                 logger.warning("neo4j.invalid_relation", relation=relation, intel_id=intel_id)
                 continue
             query = (
-                "MERGE (a:Vendor {alias: $from_actor}) "
-                "MERGE (b:Vendor {alias: $to_actor}) "
+                "MATCH (i:IntelRef {intel_id: $intel_id}) "
+                "MERGE (a:ActorHypothesis {key: $from_actor}) "
+                "MERGE (b:ActorHypothesis {key: $to_actor}) "
+                "MERGE (i)-[:HAS_HYPOTHESIS]->(a) "
                 f"MERGE (a)-[r:{relation}]->(b) "
                 "ON CREATE SET r.confidence = $confidence "
                 "ON MATCH SET r.confidence = CASE "
@@ -235,6 +250,7 @@ class Neo4jManager:
             )
             await tx.run(
                 query,
+                intel_id=intel_id,
                 from_actor=from_actor,
                 to_actor=to_actor,
                 confidence=confidence,
@@ -247,6 +263,7 @@ class Neo4jManager:
         "Neighborhood": "name",
         "Market": "name",
         "IntelRef": "intel_id",
+        "ActorHypothesis": "key",
     }
     _ID_PREFIX: dict[str, str] = {
         "Vendor": "vendor",
@@ -255,8 +272,10 @@ class Neo4jManager:
         "Neighborhood": "neighborhood",
         "Market": "market",
         "IntelRef": "intel",
+        "ActorHypothesis": "hypothesis",
     }
     _SAFE_PROPS = (
+        "key",
         "alias",
         "name",
         "address",
@@ -300,7 +319,7 @@ class Neo4jManager:
             "limits": {"max_nodes": max_nodes},
         }
         if self._driver is None:
-            return empty
+            raise RuntimeError("neo4j driver is not connected")
         async with self.driver.session(database=self._settings.database) as session:
             safe_depth = max(1, min(int(depth), 4))
             if center:
@@ -319,10 +338,14 @@ class Neo4jManager:
                         f"""
                         MATCH (start:{label} {{{prop}: $center}})
                         MATCH path = (start)-[*0..{safe_depth}]-(connected)
+                        WITH connected, relationships(path) AS rels
+                        ORDER BY length(path)
+                        LIMIT $max_nodes
                         RETURN collect(DISTINCT connected) AS node_list,
-                               collect(DISTINCT relationships(path)) AS edge_lists
+                               collect(rels) AS edge_lists
                         """,
                         center=key,
+                        max_nodes=max_nodes,
                     )
                     candidate = await result.single()
                     if candidate and candidate["node_list"]:

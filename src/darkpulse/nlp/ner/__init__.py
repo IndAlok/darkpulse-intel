@@ -206,7 +206,7 @@ def extract_vendor_mentions(text: str) -> list[ExtractedEntity]:
 def merge_entities(
     *entity_lists: list[ExtractedEntity],
 ) -> list[ExtractedEntity]:
-    priority = {"deterministic": 0, "pattern": 1, "spacy": 2, "muril": 3}
+    priority = {"deterministic": 0, "pattern": 1, "spacy": 2}
 
     all_entities: list[ExtractedEntity] = []
     for entities in entity_lists:

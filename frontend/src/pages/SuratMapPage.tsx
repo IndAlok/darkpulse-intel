@@ -89,10 +89,11 @@ export default function SuratMapPage() {
     const names = new Set<string>([
       ...features.map((feature) => feature.properties.name.toLowerCase()),
       ...Object.keys(GAZETTEER),
+      ...counts.keys(),
     ]);
     return [...names]
       .filter((name) => !SATELLITE.has(name))
-      .map((name) => ({ name, stats: counts.get(name) }))
+      .map((name) => ({ name, stats: counts.get(name), mapped: polygonNames.has(name) || name in GAZETTEER }))
       .sort((a, b) => (b.stats?.count || 0) - (a.stats?.count || 0) || a.name.localeCompare(b.name));
   }, [counts]);
 
@@ -186,7 +187,10 @@ export default function SuratMapPage() {
                       onClick={() => openPlace(row.name)}
                     >
                       <span className="capitalize">{row.name}</span>
-                      <span className="font-mono text-xs text-muted">{row.stats?.count ?? 0}</span>
+                      <span className="font-mono text-xs text-muted">
+                        {row.stats?.count ?? 0}
+                        {!row.mapped ? " ·" : ""}
+                      </span>
                     </button>
                   </li>
                 ))}

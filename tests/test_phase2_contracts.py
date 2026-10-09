@@ -1,6 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,16 +8,14 @@ from fastapi.testclient import TestClient
 from darkpulse.api.app import app
 from darkpulse.api.deps import get_mongo, get_neo4j, get_settings
 from darkpulse.api.excerpts import normalize_excerpt
+from darkpulse.api.security import Principal, mint_session
 from darkpulse.api.serializers import flatten_canonicals, serialize_intel
 from darkpulse.config import Neo4jSettings, Settings
 from darkpulse.storage.neo4j import Neo4jManager
 
-patch("darkpulse.broker.processor.MongoProcessor.start", new_callable=AsyncMock).start()
-
 mock_mongo = AsyncMock()
 mock_mongo.intel.find = MagicMock()
 mock_neo4j = AsyncMock()
-
 
 def _auth_settings() -> Settings:
     settings = Settings()
@@ -29,6 +27,9 @@ def _auth_settings() -> Settings:
     )
     return settings
 
+VIEWER = mint_session(Principal(subject="viewer-1", role="viewer"), "viewer-token")
+ANALYST = mint_session(Principal(subject="analyst-1", role="analyst"), "analyst-token")
+ADMIN = mint_session(Principal(subject="admin-1", role="administrator"), "admin-token")
 
 @pytest.fixture(autouse=True)
 def _reset_mocks():
@@ -39,20 +40,17 @@ def _reset_mocks():
     yield
     app.dependency_overrides.clear()
 
-
 def _client() -> TestClient:
     app.dependency_overrides[get_mongo] = lambda: mock_mongo
     app.dependency_overrides[get_neo4j] = lambda: mock_neo4j
     app.dependency_overrides[get_settings] = _auth_settings
     return TestClient(app)
 
-
 def test_flatten_canonicals_unnests_product_arrays() -> None:
     assert flatten_canonicals([["mdma"], {"canonical": "heroin"}, "mdma", None]) == [
         "mdma",
         "heroin",
     ]
-
 
 def test_serialize_intel_strips_mongo_id() -> None:
     payload = serialize_intel(
@@ -68,12 +66,10 @@ def test_serialize_intel_strips_mongo_id() -> None:
     assert "processing" not in payload
     assert payload["intel_id"] == "intel-1"
 
-
 def test_normalize_excerpt_never_returns_raw_json() -> None:
     excerpt = normalize_excerpt('{"title": "Surat NDPS seizure", "url": "https://example.invalid"}')
     assert "{" not in excerpt
     assert "Surat NDPS seizure" in excerpt
-
 
 def test_graph_stable_ids_and_center_resolution() -> None:
     manager = Neo4jManager(Neo4jSettings())
@@ -83,18 +79,11 @@ def test_graph_stable_ids_and_center_resolution() -> None:
     assert manager._resolve_center("alice", "Vendor") == ("Vendor", "alice")
     assert manager._resolve_center("neighborhood:Adajan", "Vendor") == ("Neighborhood", "Adajan")
 
-
 @pytest.mark.asyncio
 async def test_graph_returns_empty_when_driver_missing() -> None:
     manager = Neo4jManager(Neo4jSettings())
-    graph = await manager.get_subgraph(center="intel:missing")
-    assert graph == {
-        "nodes": [],
-        "edges": [],
-        "truncated": False,
-        "limits": {"max_nodes": 200},
-    }
-
+    with pytest.raises(RuntimeError, match="not connected"):
+        await manager.get_subgraph(center="intel:missing")
 
 def test_auth_login_and_me() -> None:
     with _client() as client:
@@ -102,27 +91,28 @@ def test_auth_login_and_me() -> None:
         assert denied.status_code == 401
         accepted = client.post("/api/v1/auth/login", json={"token": "analyst-token"})
         assert accepted.status_code == 200
-        assert accepted.json()["data"] == {
-            "subject": "analyst-1",
-            "role": "analyst",
-            "token": "analyst-token",
-        }
-        me = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer viewer-token"})
+        body = accepted.json()["data"]
+        assert body["subject"] == "analyst-1"
+        assert body["role"] == "analyst"
+        assert body["token"] != "analyst-token"
+        me_session = client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {body['token']}"}
+        )
+        assert me_session.status_code == 200
+        me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {VIEWER}"})
         assert me.status_code == 200
         assert me.json()["data"] == {"subject": "viewer-1", "role": "viewer"}
-
 
 def test_search_accepts_hinglish() -> None:
     mock_mongo.search_intel = AsyncMock(return_value={"total": 0, "records": []})
     with _client() as client:
         response = client.get(
             "/api/v1/search?q=maal&lang=hinglish",
-            headers={"Authorization": "Bearer viewer-token"},
+            headers={"Authorization": f"Bearer {VIEWER}"},
         )
     assert response.status_code == 200
     mock_mongo.search_intel.assert_awaited()
     assert mock_mongo.search_intel.await_args.kwargs["lang"] == "hinglish"
-
 
 def test_watchlist_match_count_from_alerts() -> None:
     cursor = MagicMock()
@@ -145,7 +135,7 @@ def test_watchlist_match_count_from_alerts() -> None:
     with _client() as client:
         response = client.get(
             "/api/v1/watchlists",
-            headers={"Authorization": "Bearer viewer-token"},
+            headers={"Authorization": f"Bearer {VIEWER}"},
         )
     assert response.status_code == 200
     assert response.json()["data"][0]["match_count"] == 4

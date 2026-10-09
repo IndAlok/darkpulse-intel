@@ -58,7 +58,7 @@ class TestNLPPipeline:
         slang_dict = SlangDictionary()
         pipeline = NLPPipeline(slang_dictionary=slang_dict)
 
-        record = MockRawIngest("Test content")
+        record = MockRawIngest("MDMA pills for sale in Adajan. $50 for 10.")
         result = pipeline.process(record)
 
         assert result is not None
@@ -71,7 +71,7 @@ class TestNLPPipeline:
         slang_dict = SlangDictionary()
         pipeline = NLPPipeline(slang_dictionary=slang_dict)
 
-        record = MockRawIngest("Test content")
+        record = MockRawIngest("MDMA pills for sale in Adajan. $50 for 10.")
         pipeline.process(record)
 
         metrics = pipeline.metrics
@@ -84,7 +84,8 @@ class TestNLPPipeline:
         slang_dict = SlangDictionary()
         pipeline = NLPPipeline(slang_dictionary=slang_dict)
 
-        record = MockRawIngest("Test content")
+        record = MockRawIngest("MDMA pills for sale in Adajan. $50 for 10.")
         result = pipeline.process(record)
 
+        assert result is not None
         assert result.trace_id == record.trace_id

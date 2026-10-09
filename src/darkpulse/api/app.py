@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -12,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_client import Counter, Histogram, make_asgi_app
+from prometheus_client import Counter, Histogram, start_http_server
 
 from darkpulse.api.rate_limit import enforce_write_rate_limit
 from darkpulse.api.routes import (
@@ -29,9 +28,10 @@ from darkpulse.api.routes import (
     slang,
     watchlists,
 )
-from darkpulse.api.security import current_principal
+from darkpulse.api.routes.alerts import start_alert_relay, stop_alert_relay
+from darkpulse.api.security import bind_session_store, close_session_store, current_principal
 from darkpulse.broker.processor import MongoProcessor
-from darkpulse.config import get_settings
+from darkpulse.config import allowed_origins, enforce_boot, get_settings
 from darkpulse.storage.mongodb import MongoManager
 from darkpulse.storage.neo4j import Neo4jManager
 
@@ -70,22 +70,20 @@ API_LATENCY = Histogram(
 )
 
 
+_metrics_started = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
-    if settings.service.environment == "production":
-        if not settings.auth.enabled or not settings.auth.tokens_json:
-            raise RuntimeError(
-                "Production requires DARKPULSE_AUTH_ENABLED and DARKPULSE_AUTH_TOKENS_JSON; "
-                "use an OIDC gateway for managed identity."
-            )
-        if settings.neo4j.password == "darkpulse_dev":
-            raise RuntimeError("Production requires a non-default Neo4j password (NEO4J_PASSWORD).")
-        if not settings.service.frontend_origin.startswith("https://"):
-            raise RuntimeError(
-                "Production requires an HTTPS frontend origin (DARKPULSE_FRONTEND_ORIGIN)."
-            )
+    enforce_boot(settings)
+    global _metrics_started
+    if settings.service.metrics_port and not _metrics_started:
+        start_http_server(settings.service.metrics_port)
+        _metrics_started = True
     app.state.settings = settings
+    bind_session_store(settings.redis.url)
+    await start_alert_relay(settings.redis.url)
     app.state.mongo = MongoManager(settings.mongo)
     app.state.neo4j = Neo4jManager(settings.neo4j)
 
@@ -96,38 +94,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("neo4j.connect_failed")
 
-    app.state.processor = MongoProcessor(settings, app.state.mongo, app.state.neo4j)
+    from darkpulse.ingestion.dedup import RedisDedupStore
+
+    dedup = RedisDedupStore(
+        settings.redis.url, ttl_seconds=settings.collection.dedup_ttl_seconds
+    )
+    app.state.processor = MongoProcessor(settings, app.state.mongo, app.state.neo4j, dedup=dedup)
     await app.state.processor.start()
 
     yield
 
+    await stop_alert_relay()
+    close_session_store()
     await app.state.processor.stop()
     await app.state.mongo.close()
     await app.state.neo4j.close()
 
 
+_docs_enabled = get_settings().auth.local_open_mode
 app = FastAPI(
-    title="DarkPulse — Investigator API",
-    description="DarkPulse intelligence API serving the investigator dashboard",
+    title="DarkPulse Investigator API",
     version=SERVICE_VERSION,
     lifespan=lifespan,
-)
-
-environment = os.environ.get("DARKPULSE_ENVIRONMENT", "development")
-frontend_origin = os.environ.get("DARKPULSE_FRONTEND_ORIGIN", "http://localhost:5173")
-
-allowed_origins = (
-    ["http://localhost:5173", "http://localhost:3000"]
-    if environment == "development"
-    else [frontend_origin]
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=sorted(allowed_origins(get_settings())),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-DarkPulse-Evidence-Seal", "X-Trace-ID"],
 )
 
 _authenticated = [Depends(current_principal), Depends(enforce_write_rate_limit)]
@@ -140,10 +140,10 @@ app.include_router(dashboards.router, prefix="/api/v1", dependencies=_authentica
 app.include_router(watchlists.router, prefix="/api/v1", dependencies=_authenticated)
 app.include_router(slang.router, prefix="/api/v1", dependencies=_authenticated)
 app.include_router(alerts.router, prefix="/api/v1", dependencies=_authenticated)
+app.include_router(alerts.ws_router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1", dependencies=_authenticated)
 app.include_router(evidence.router, prefix="/api/v1", dependencies=_authenticated)
 app.include_router(operations.router, prefix="/api/v1", dependencies=_authenticated)
-app.mount("/metrics", make_asgi_app())
 
 
 @app.middleware("http")
@@ -157,6 +157,11 @@ async def request_context(request: Request, call_next: Any) -> Any:
     API_REQUESTS.labels(request.method, route_path, str(response.status_code)).inc()
     API_LATENCY.labels(request.method, route_path).observe(time.perf_counter() - started)
     response.headers["X-Trace-ID"] = trace_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
@@ -179,7 +184,12 @@ def _error_response(request: Request, *, status_code: int, code: str, message: s
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("api.unhandled_error", path=request.url.path, error_type=type(exc).__name__)
+    logger.error(
+        "api.unhandled_error",
+        path=request.url.path,
+        error_type=type(exc).__name__,
+        exc_info=exc,
+    )
     return _error_response(
         request, status_code=500, code="internal_error", message="Internal server error"
     )
@@ -221,13 +231,27 @@ async def validation_exception_handler(
     )
 
 
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    return _error_response(
+        request, status_code=404, code="not_found", message="Not found"
+    )
+
+
+@app.exception_handler(405)
+async def method_not_allowed_handler(request: Request, exc: Exception) -> JSONResponse:
+    return _error_response(
+        request, status_code=405, code="method_not_allowed", message="Method not allowed"
+    )
+
+
 @app.get("/health")
-async def health() -> dict[str, Any]:
-    return {"status": "healthy", "service": SERVICE_NAME, "version": SERVICE_VERSION}
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 @app.get("/api/v1/health")
-async def api_health() -> dict[str, Any]:
+async def api_health() -> JSONResponse:
     mongo_health = (
         await app.state.mongo.health()
         if hasattr(app.state, "mongo")
@@ -265,22 +289,28 @@ async def api_health() -> dict[str, Any]:
         collector_health = {"status": "unknown"}
 
     healthy_states = {"healthy", "green", "yellow"}
-    all_healthy = (
-        all(
-            str(h.get("status", "")).lower() in healthy_states for h in [mongo_health, neo4j_health]
-        )
+
+    def _status_of(payload: object) -> str:
+        if not isinstance(payload, dict):
+            return ""
+        return str(payload.get("status", "")).lower()
+
+    ready = (
+        _status_of(mongo_health) in healthy_states
+        and _status_of(neo4j_health) in healthy_states
         and processor_healthy
     )
-
-    return {
+    all_healthy = ready and _status_of(collector_health) == "healthy"
+    body = {
         "status": "healthy" if all_healthy else "degraded",
         "services": {
-            "mongodb": mongo_health,
-            "neo4j": neo4j_health,
+            "mongodb": mongo_health if isinstance(mongo_health, dict) else {"status": "unhealthy"},
+            "neo4j": neo4j_health if isinstance(neo4j_health, dict) else {"status": "unhealthy"},
             "processor": {"status": "healthy" if processor_healthy else "unhealthy"},
             "collector": collector_health,
         },
     }
+    return JSONResponse(status_code=200 if ready else 503, content=body)
 
 
 def main() -> None:

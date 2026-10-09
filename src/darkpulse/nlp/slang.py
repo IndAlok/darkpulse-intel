@@ -217,7 +217,7 @@ class SlangDictionary:
         decoded: list[dict[str, Any]] = []
         seen_terms: set[str] = set()
 
-        text_lower = text.lower()
+        text_lower = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", text).lower()
 
         from darkpulse.nlp.language import EMOJI_MAP
 

@@ -75,7 +75,7 @@ export default function DashboardPage({ principal }: { principal?: Principal }) 
       <PageHeader
         eyebrow="OVERVIEW"
         title="Command center"
-        description="Live operating picture from collected public OSINT. Totals, trends, and queues update as the collector publishes records."
+        description="Totals, trends, and queues from stored intelligence. Reload the page to pick up records published since it opened."
         action={
           <span
             className={`rounded-full px-3 py-1 font-mono text-xs ${
@@ -116,7 +116,9 @@ export default function DashboardPage({ principal }: { principal?: Principal }) 
           detail={
             lastRun
               ? `${lastRun.published ?? 0} published from ${lastRun.source_id}`
-              : "No successful collection run recorded"
+              : collector?.last_started_at
+                ? `Last cycle ${formatRelative(collector.last_started_at)}`
+                : "No successful collection run recorded"
           }
         />
       </div>
@@ -251,7 +253,7 @@ export default function DashboardPage({ principal }: { principal?: Principal }) 
               <Link
                 key={entry.neighborhood}
                 to={`/intel?neighborhood=${encodeURIComponent(entry.neighborhood)}`}
-                className="rounded-full border border-border px-3 py-1 text-xs text-navy hover:border-teal/40"
+                className="rounded-md border border-border px-3 py-1 text-xs text-navy hover:border-teal/40"
               >
                 {titleCase(entry.neighborhood)} · {entry.count}
               </Link>

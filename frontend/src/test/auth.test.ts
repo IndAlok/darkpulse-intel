@@ -34,10 +34,12 @@ describe("auth and search adapters", () => {
 
   it("builds the alert websocket from the current origin", () => {
     setAccessToken("session-token");
-    const url = wsUrl();
+    const url = wsUrl("one-time");
     expect(url.startsWith("ws://") || url.startsWith("wss://")).toBe(true);
     expect(url).toContain("/api/v1/alerts/ws");
-    expect(url).toContain("access_token=session-token");
+    expect(url).toContain("ticket=one-time");
+    expect(url).not.toContain("access_token=");
+    expect(url).not.toContain("session-token");
     expect(url).not.toContain("railway.internal");
   });
 });

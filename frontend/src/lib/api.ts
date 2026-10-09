@@ -81,7 +81,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     throw new ApiRequestError("Unable to reach the API", 0, "upstream_down");
   }
 
-  if (!response.ok) {
+  if (!response.ok && !(response.status === 503 && path === "/health")) {
     const body = await response.text();
     let parsed: { errors?: Array<{ message?: string; code?: string }> } | null = null;
     try {
@@ -111,6 +111,7 @@ export const authApi = {
       body: JSON.stringify({ token }),
     }),
   me: () => apiFetch<ApiEnvelope<Principal>>("/auth/me"),
+  logout: () => apiFetch<ApiEnvelope<Principal>>("/auth/logout", { method: "POST" }),
 };
 
 export const intelApi = {
@@ -166,7 +167,10 @@ export const watchlistApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  update: (id: string, payload: Omit<Watchlist, "id" | "created_at" | "updated_at" | "match_count">) =>
+  update: (
+    id: string,
+    payload: Partial<Omit<Watchlist, "id" | "created_at" | "updated_at" | "match_count">>,
+  ) =>
     apiFetch<ApiEnvelope<Watchlist>>(`/watchlists/${id}`, {
       method: "PUT",
       body: JSON.stringify(payload),
@@ -219,6 +223,7 @@ export const alertsApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  ticket: () => apiFetch<ApiEnvelope<{ ticket: string }>>("/alerts/ws-ticket", { method: "POST" }),
 };
 
 export const exportApi = {
@@ -228,6 +233,7 @@ export const exportApi = {
     let response: Response;
     try {
       response = await fetch(`${API_BASE}/export?${query}`, {
+        method: "POST",
         headers: authHeaders(),
       });
     } catch {
@@ -235,11 +241,14 @@ export const exportApi = {
     }
     if (!response.ok) {
       if (response.status === 401) notifyUnauthenticated();
-      throw new ApiRequestError(
-        `Export failed: ${response.status} ${response.statusText}`,
-        response.status,
-        codeForStatus(response.status),
-      );
+      let detail = `Export failed: ${response.status} ${response.statusText}`;
+      try {
+        const parsed = (await response.json()) as { errors?: Array<{ message?: string }> };
+        detail = parsed.errors?.[0]?.message || detail;
+      } catch {
+        // Non-JSON error bodies keep the status text.
+      }
+      throw new ApiRequestError(detail, response.status, codeForStatus(response.status));
     }
     const disposition = response.headers.get("Content-Disposition") || "";
     const match = disposition.match(/filename="?([^"]+)"?/);
@@ -252,6 +261,16 @@ export const exportApi = {
     };
   },
 };
+
+export function saveArtifact(artifact: ExportDownload): void {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(artifact.blob);
+  link.download = artifact.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+}
 
 export const evidenceApi = {
   seal: (payload: string) =>
@@ -278,8 +297,6 @@ export const evidenceApi = {
 };
 
 export const healthApi = {
-  check: () =>
-    apiFetch<{ status: string; service?: string; version?: string }>("/health"),
   detailed: () => apiFetch<DetailedHealthStatus>("/health"),
 };
 
@@ -293,9 +310,8 @@ export const operationsApi = {
     apiFetch<ApiEnvelope<CollectionRun[]>>(`/operations/collection-runs?limit=${limit}`),
 };
 
-export const wsUrl = () => {
-  const token = getAccessToken();
+export const wsUrl = (ticket?: string) => {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const query = token ? `?access_token=${encodeURIComponent(token)}` : "";
+  const query = ticket ? `?ticket=${encodeURIComponent(ticket)}` : "";
   return `${proto}//${window.location.host}/api/v1/alerts/ws${query}`;
 };

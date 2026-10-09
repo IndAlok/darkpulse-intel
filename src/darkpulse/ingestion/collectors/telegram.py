@@ -119,7 +119,16 @@ class TelegramCollector(BaseCollector):
                 await self.save_checkpoint(str(message.message_id))
         except CollectionError:
             raise
-        except Exception:
+        except Exception as exc:
+            if type(exc).__name__ == "FloodWaitError":
+                # Telethon rate limit: wait the requested seconds and let the
+                # run loop retry; the checkpoint is not advanced so the same
+                # messages are re-read next cycle
+                wait = int(getattr(exc, "seconds", 30))
+                self._last_failure_code = f"telegram_floodwait_{wait}s"
+                raise CollectionError(
+                    f"telegram_floodwait_{wait}s", self.source_id
+                ) from exc
             self._last_failure_code = "telegram_read_failed"
             raise CollectionError("telegram_read_failed", self.source_id) from None
 

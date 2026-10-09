@@ -29,6 +29,7 @@ SURFACE_SOURCE_CLASSES = frozenset(
     {SourceClass.PASTE, SourceClass.SURFACE_MARKET, SourceClass.SOCIAL}
 )
 TOR_SOURCE_CLASSES = frozenset({SourceClass.TOR_FORUM, SourceClass.TOR_MARKET})
+LIVE_SOURCE_CLASSES = SURFACE_SOURCE_CLASSES | TOR_SOURCE_CLASSES | {SourceClass.TELEGRAM}
 
 
 @dataclass(frozen=True, slots=True)

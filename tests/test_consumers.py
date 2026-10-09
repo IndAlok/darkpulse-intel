@@ -46,7 +46,12 @@ def claimed_doc() -> dict:
 @pytest.fixture
 def processor():
     settings = Settings()
-    return MongoProcessor(settings, AsyncMock(), AsyncMock())
+    mongo = AsyncMock()
+    known = MagicMock()
+    known.to_list = AsyncMock(return_value=[])
+    known.sort = MagicMock(return_value=known)
+    mongo.intel.find = MagicMock(return_value=known)
+    return MongoProcessor(settings, mongo, AsyncMock())
 
 
 @pytest.mark.asyncio
@@ -103,6 +108,58 @@ async def test_process_doc_accepts_naive_mongo_datetimes(processor):
     captured = processor._nlp_pipeline.process.call_args.args[0]
     assert captured.captured_at.tzinfo is UTC
     assert captured.evidence.captured_at.tzinfo is UTC
+
+
+@pytest.mark.asyncio
+async def test_saved_intel_phase_skips_nlp(processor):
+    processor._process_intel = AsyncMock(return_value=True)
+    processor.mongo.intel.find_one = AsyncMock(
+        return_value={"_id": "mongo", "intel_id": "intel-1", "ingest_id": "ingest-1"}
+    )
+    processor.mongo.intel.update_one = AsyncMock()
+    processor.mongo.raw_ingest.update_one = AsyncMock()
+    processor._nlp_pipeline = MagicMock()
+    doc = claimed_doc()
+    doc["processing"]["phase"] = "intel_saved"
+    doc["processing"]["intel_id"] = "intel-1"
+    await processor._process_doc(doc)
+    processor._nlp_pipeline.process.assert_not_called()
+    payload = processor._process_intel.await_args.args[0]
+    assert payload["intel_id"] == "intel-1"
+    assert "_id" not in payload
+    finished = processor.mongo.raw_ingest.update_one.await_args.args[1]["$set"]
+    assert finished["processing.status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_graph_outage_waits_without_burning_the_attempt(processor):
+    record = MagicMock()
+    record.intel_id = "intel-1"
+    record.ingest_id = "123e4567-e89b-12d3-a456-426614174000"
+    record.model_dump.return_value = {"intel_id": "intel-1"}
+    processor._contract2_validator.validate = MagicMock()
+    processor.mongo.intel.insert_one = AsyncMock()
+    processor.mongo.raw_ingest.find_one = AsyncMock(return_value={"processing": {}})
+    processor.mongo.raw_ingest.update_one = AsyncMock()
+    processor.neo4j.upsert_intel_graph = AsyncMock(side_effect=RuntimeError("neo4j down"))
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(
+            "darkpulse.broker.processor.TraffickingIntel.model_validate", lambda payload: record
+        )
+        saved = await processor._process_intel({"intel_id": "intel-1"})
+    assert saved is False
+    update = processor.mongo.raw_ingest.update_one.await_args.args[1]
+    assert update["$set"]["processing.status"] == "waiting_dependency"
+    assert update["$inc"]["processing.attempts"] == -1
+
+
+@pytest.mark.asyncio
+async def test_claim_next_retries_waiting_dependency(processor):
+    processor.mongo.raw_ingest.find_one_and_update = AsyncMock(return_value=None)
+    await processor._claim_next()
+    query = processor.mongo.raw_ingest.find_one_and_update.await_args.args[0]
+    statuses = [item.get("processing.status") for item in query["$or"] if isinstance(item, dict)]
+    assert "waiting_dependency" in statuses
 
 
 @pytest.mark.asyncio
@@ -174,6 +231,9 @@ async def test_process_intel_replay_is_idempotent(processor):
 
     processor.mongo.intel.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
     processor.mongo.alerts_config.find_one = AsyncMock(return_value=None)
+    watch_cursor = MagicMock()
+    watch_cursor.to_list = AsyncMock(return_value=[])
+    processor.mongo.watchlists.find = MagicMock(return_value=watch_cursor)
 
     await processor._process_intel(payload)
     processor.neo4j.upsert_intel_graph.assert_called_once()

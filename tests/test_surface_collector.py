@@ -1,3 +1,5 @@
+import socket
+
 import httpx
 import pytest
 
@@ -8,6 +10,14 @@ from darkpulse.ingestion.collectors.registry import SourceDefinition
 from darkpulse.ingestion.collectors.surface import SurfaceCollector, validate_public_surface_url
 from darkpulse.ingestion.content_state import InMemoryContentStateStore
 from darkpulse.models import ContentType, SourceClass
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake)
 
 
 def make_source(*, locator: str = "https://example.invalid/approved") -> SourceDefinition:
@@ -128,4 +138,22 @@ async def test_surface_collector_splits_rss_items() -> None:
     assert "weed" in records[0].raw_content.lower()
     assert records[0].source_ref == "https://example.invalid/weed"
     assert "heroin" in records[1].raw_content.lower()
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_surface_dns_failure_blocks_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        raise OSError("no dns")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fail)
+    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"fixture")
+    client, http = make_http(response)
+    collector = SurfaceCollector(
+        source=make_source(),
+        checkpoints=InMemoryCheckpointStore(),
+        http=http,
+    )
+    with pytest.raises(CollectionError):
+        _ = [record async for record in collector.collect()]
     await client.aclose()

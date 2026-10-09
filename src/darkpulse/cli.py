@@ -8,7 +8,10 @@ from collections import Counter
 from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
+
+import httpx
 
 from darkpulse.config import Settings, get_settings
 from darkpulse.ingestion.checkpoints import (
@@ -16,6 +19,9 @@ from darkpulse.ingestion.checkpoints import (
     InMemoryCheckpointStore,
     RedisCheckpointStore,
 )
+from darkpulse.ingestion.collectors.discovery import DarkWebSearchAggregator, DiscoveryEngine
+from darkpulse.ingestion.collectors.http import BoundedHttpClient, RetryPolicy
+from darkpulse.ingestion.collectors.onion import create_isolated_tor_client
 from darkpulse.ingestion.collectors.registry import SourceRegistry
 from darkpulse.ingestion.collectors.runner import CollectorRunner, CollectorRunSummary
 from darkpulse.ingestion.collectors.telegram import bootstrap_telegram_session
@@ -26,7 +32,7 @@ from darkpulse.ingestion.content_state import (
 )
 from darkpulse.ingestion.dedup import DedupStore, InMemoryDedupStore, RedisDedupStore
 from darkpulse.ingestion.live import (
-    SURFACE_SOURCE_CLASSES,
+    LIVE_SOURCE_CLASSES,
     LiveSourceConfig,
     create_live_collector,
 )
@@ -84,6 +90,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("telegram-auth", help="Create or refresh the operator Telegram session.")
 
+    discover = subparsers.add_parser(
+        "discover",
+        help="Search configured engines for onion candidates. Prints candidates; stores nothing.",
+    )
+    discover.add_argument("--engines", type=Path, required=True)
+    discover.add_argument("--query", required=True)
+
     return parser
 
 
@@ -110,7 +123,10 @@ def _pipeline_resources(
         )
 
     pipeline = IngestionPipeline(
-        safety_policy=SafetyPolicy.from_path(safety_policy_path),
+        safety_policy=SafetyPolicy.from_path(
+            safety_policy_path,
+            require_blocklist=settings.service.environment.strip().lower() == "production",
+        ),
         dedup_store=dedup_store,
         publisher=publisher,
         validator=ContractValidator(contract_path),
@@ -159,7 +175,7 @@ async def run_evolution(args: argparse.Namespace, settings: Settings) -> int:
             sort_keys=True,
         )
     )
-    return 0
+    return _loader_exit(counts)
 
 
 async def run_gwern(args: argparse.Namespace, settings: Settings) -> int:
@@ -200,6 +216,12 @@ async def run_gwern(args: argparse.Namespace, settings: Settings) -> int:
             sort_keys=True,
         )
     )
+    return _loader_exit(counts)
+
+
+def _loader_exit(counts: Counter[str]) -> int:
+    if not counts or counts["rejected"] == sum(counts.values()):
+        return 1
     return 0
 
 
@@ -224,20 +246,8 @@ async def run_live_collection(args: argparse.Namespace, settings: Settings) -> i
         checkpoints = RedisCheckpointStore(settings.redis.url)
         content_state = RedisContentStateStore(settings.redis.url)
 
-    api_hash = (
-        settings.collection.telegram_api_hash.get_secret_value()
-        if settings.collection.telegram_api_hash
-        else None
-    )
-    live_config = LiveSourceConfig(
-        onion_review_policy_path=args.onion_review or settings.collection.onion_review_policy_path,
-        tor_proxy_url=settings.collection.tor_proxy_url,
-        telegram_api_id=settings.collection.telegram_api_id,
-        telegram_api_hash=api_hash,
-        telegram_runtime_root=settings.collection.telegram_runtime_root,
-        telegram_session_path=settings.collection.telegram_session_path,
-        telegram_max_messages=settings.collection.telegram_max_messages,
-    )
+    live_config = _live_config(args, settings)
+    started_at = datetime.now(UTC)
 
     async with AsyncExitStack() as stack:
         stack.push_async_callback(dedup_store.close)
@@ -256,6 +266,9 @@ async def run_live_collection(args: argparse.Namespace, settings: Settings) -> i
         await publisher.start()
         stack.push_async_callback(publisher.stop)
         summary = await CollectorRunner(pipeline, metrics=metrics).run(handle.collector)
+        await _persist_collection_run(
+            mongo_manager, source_id=source.source_id, started_at=started_at, summary=summary
+        )
 
     print(
         json.dumps(
@@ -349,14 +362,15 @@ async def run_collect_all(args: argparse.Namespace, settings: Settings) -> int:
                 if not source.enabled:
                     continue
                 started_at = datetime.now(UTC)
-                if source.source_class not in SURFACE_SOURCE_CLASSES:
+                if source.source_class not in LIVE_SOURCE_CLASSES:
                     skipped = {
                         "source_id": source.source_id,
                         "published": 0,
                         "duplicates": 0,
                         "rejected": 0,
                         "failures": 0,
-                        "failure_code": "unsupported_live_class",
+                        "failure_code": None,
+                        "skip_reason": "not_a_live_source_class",
                         "skipped": True,
                     }
                     cycle.append(skipped)
@@ -394,7 +408,7 @@ async def run_collect_all(args: argparse.Namespace, settings: Settings) -> int:
                 )
                 if source_gap:
                     await asyncio.sleep(source_gap)
-            failures = sum(int(item.get("failures") or 0) for item in cycle)
+            failures = sum(int(str(item.get("failures") or 0)) for item in cycle)
             cycle_exit = 1 if failures else 0
             print(
                 json.dumps(
@@ -444,10 +458,49 @@ async def run_telegram_auth(settings: Settings) -> int:
     return 0
 
 
+async def run_discover(args: argparse.Namespace, settings: Settings) -> int:
+    engines = [
+        DiscoveryEngine.model_validate(item)
+        for item in json.loads(args.engines.read_text(encoding="utf-8"))
+    ]
+    raw_clients = {
+        engine.engine_id: (
+            create_isolated_tor_client(settings.collection.tor_proxy_url, engine.engine_id)
+            if ".onion" in engine.search_url_template
+            else httpx.AsyncClient(follow_redirects=False, trust_env=False)
+        )
+        for engine in engines
+    }
+    try:
+        result = await DarkWebSearchAggregator(
+            engines=engines,
+            clients={
+                key: BoundedHttpClient(client=client, retry_policy=RetryPolicy(max_retries=0))
+                for key, client in raw_clients.items()
+            },
+        ).search(args.query)
+    finally:
+        for client in raw_clients.values():
+            await client.aclose()
+    print(
+        json.dumps(
+            {
+                "command": "discover",
+                "candidates": [asdict(candidate) for candidate in result.candidates],
+                "failed_engines": list(result.failed_engines),
+            },
+            sort_keys=True,
+        )
+    )
+    return 1 if result.failed_engines and not result.candidates else 0
+
+
 async def async_main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     settings = get_settings()
     configure_logging(settings.service.log_level)
+    if args.command == "discover":
+        return await run_discover(args, settings)
     if args.command == "evolution":
         return await run_evolution(args, settings)
     if args.command == "gwern":

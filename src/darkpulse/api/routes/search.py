@@ -54,7 +54,7 @@ async def search(
         metadata={"result_count": len(result["records"])},
     )
     return {
-        "data": [serialize_intel(record) for record in result["records"]],
+        "data": [serialize_intel(record, role=principal.role) for record in result["records"]],
         "pagination": Pagination(cursor=None, limit=limit, total=result["total"]),
         "meta": {},
     }

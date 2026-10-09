@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("DARKPULSE_LOCAL_OPEN_MODE", "true")
+os.environ.setdefault("DARKPULSE_API_HOST", "127.0.0.1")
+os.environ.setdefault("DARKPULSE_METRICS_PORT", "0")
+
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from darkpulse.api import security as _security
+from darkpulse.config import Settings
 from darkpulse.ingestion.hashing import canonical_json_bytes
 from darkpulse.ingestion.records import SourceRecord
 from darkpulse.ingestion.safety import SafetyPolicy
@@ -16,17 +24,69 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = REPO_ROOT / "contracts/contract1-raw-ingest.schema.json"
 SAFETY_POLICY_PATH = REPO_ROOT / "safety/policy/prepublish-v1.json"
 
-patch("darkpulse.broker.processor.MongoProcessor.start", new_callable=AsyncMock).start()
-patch("darkpulse.broker.processor.MongoProcessor.stop", new_callable=AsyncMock).start()
-patch("darkpulse.storage.mongodb.MongoManager.connect", new_callable=AsyncMock).start()
-patch("darkpulse.storage.mongodb.MongoManager.close", new_callable=AsyncMock).start()
-patch("darkpulse.storage.mongodb.MongoManager.health", new_callable=AsyncMock).start()
-patch(
-    "darkpulse.storage.mongodb.MongoManager.ensure_application_defaults", new_callable=AsyncMock
-).start()
-patch("darkpulse.storage.neo4j.Neo4jManager.connect", new_callable=AsyncMock).start()
-patch("darkpulse.storage.neo4j.Neo4jManager.close", new_callable=AsyncMock).start()
-patch("darkpulse.storage.neo4j.Neo4jManager.health", new_callable=AsyncMock).start()
+_security._redis_disabled = True
+
+_DATASTORE_PATCHES = (
+    "darkpulse.broker.processor.MongoProcessor.start",
+    "darkpulse.broker.processor.MongoProcessor.stop",
+    "darkpulse.storage.mongodb.MongoManager.connect",
+    "darkpulse.storage.mongodb.MongoManager.close",
+    "darkpulse.storage.mongodb.MongoManager.health",
+    "darkpulse.storage.mongodb.MongoManager.ensure_application_defaults",
+    "darkpulse.storage.neo4j.Neo4jManager.connect",
+    "darkpulse.storage.neo4j.Neo4jManager.close",
+    "darkpulse.storage.neo4j.Neo4jManager.health",
+)
+
+
+@pytest.fixture(autouse=True)
+def _stub_app_datastores(request: pytest.FixtureRequest):
+    if request.node.get_closest_marker("live_datastores"):
+        yield
+        return
+    started = [patch(target, new_callable=AsyncMock) for target in _DATASTORE_PATCHES]
+    for item in started:
+        item.start()
+    yield
+    for item in reversed(started):
+        item.stop()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rate_limits() -> None:
+    from darkpulse.api import rate_limit
+
+    rate_limit.reset_rate_limits()
+    rate_limit._redis_disabled = True
+    yield
+    rate_limit.reset_rate_limits()
+
+
+TEST_TOKEN = "0123456789abcdef0123456789abcdef"
+
+
+@pytest.fixture
+def auth_settings() -> Settings:
+    """Settings with a configured token, for tests that override get_settings."""
+    from pydantic import SecretStr
+
+    settings = Settings()
+    settings.auth.enabled = True
+    settings.auth.local_open_mode = False
+    settings.auth.tokens_json = SecretStr(
+        f'{{"{TEST_TOKEN}": {{"subject": "analyst-001", "role": "analyst"}}}}'
+    )
+    return settings
+
+
+@pytest.fixture
+def auth_headers() -> dict[str, str]:
+    """Bearer headers from a real session, for TestClient calls."""
+    from darkpulse.api.security import Principal, mint_session
+
+    principal = Principal(subject="analyst-001", role="analyst")
+    session = mint_session(principal, TEST_TOKEN)
+    return {"Authorization": f"Bearer {session}"}
 
 
 @pytest.fixture

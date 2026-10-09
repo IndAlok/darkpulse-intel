@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import {
   ConfirmationDialog,
   DataState,
@@ -7,11 +7,13 @@ import {
   PageHeader,
   Toast,
 } from "../components/Ui";
+import { usePrincipal } from "../lib/principal";
 import { watchlistApi } from "../lib/api";
 import { useApi } from "../hooks";
 
 export default function WatchlistsPage() {
   const lists = useApi(() => watchlistApi.list());
+  const canWrite = usePrincipal()?.role !== "viewer";
   const [name, setName] = useState("");
   const [terms, setTerms] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export default function WatchlistsPage() {
         title="Watchlists"
         description="Match counts come from alert history keyed by watchlist ID."
       />
-      <form
+      {canWrite && <form
         className="mb-4 flex flex-wrap gap-2"
         onSubmit={(event) => {
           event.preventDefault();
@@ -57,7 +59,7 @@ export default function WatchlistsPage() {
           required
         />
         <button className="rounded bg-teal px-3 py-2 text-sm text-bg">Create</button>
-      </form>
+      </form>}
       <DataState loading={lists.loading} error={lists.error} retry={lists.reload} code={lists.errorCode}>
         {(lists.data?.data ?? []).length ? (
           <DataTable columns={["Name", "Terms", "Matches", ""]}>
@@ -67,10 +69,25 @@ export default function WatchlistsPage() {
                 <td className="px-3 py-2 text-sm text-muted">{list.terms.join(", ")}</td>
                 <td className="px-3 py-2 font-mono">{list.match_count ?? 0}</td>
                 <td className="px-3 py-2">
-                  <button className="text-xs text-red-300" onClick={() => setRemoveId(list.id)}>
-                    Delete
-                  </button>
-                </td>
+                                  {canWrite && (
+                                    <button
+                                      className={`mr-3 text-xs ${list.notify ? "text-teal" : "text-muted"}`}
+                                      onClick={() =>
+                                        void watchlistApi
+                                          .update(list.id, { notify: !list.notify })
+                                          .then(() => lists.reload())
+                                          .catch((error: Error) => setToast(error.message))
+                                      }
+                                    >
+                                      {list.notify ? "Notify on" : "Notify off"}
+                                    </button>
+                                  )}
+                                  {canWrite && (
+                                    <button className="text-xs text-red-300" onClick={() => setRemoveId(list.id)}>
+                                      Delete
+                                    </button>
+                                  )}
+                                </td>
               </tr>
             ))}
           </DataTable>

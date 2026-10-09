@@ -26,6 +26,7 @@ class CollectorRunSummary:
     rejected: int = 0
     failures: int = 0
     failure_code: str | None = None
+    retries: int = 0
 
 
 class CollectorRunner:
@@ -45,9 +46,11 @@ class CollectorRunner:
             OutcomeStatus.REJECTED: 0,
         }
         try:
+            retries = 0
             async for record in collector.collect():
                 outcome = await self._pipeline.process(record)
                 counts[outcome.status] += 1
+                retries += int(record.crawl_metadata.retries or 0)
         except CollectionError as error:
             logger.error(
                 "collector_failed",
@@ -64,6 +67,7 @@ class CollectorRunner:
                 rejected=counts[OutcomeStatus.REJECTED],
                 failures=1,
                 failure_code=error.code,
+                retries=retries,
             )
             self._record_metrics(collector, summary)
             return summary
@@ -83,6 +87,7 @@ class CollectorRunner:
                 rejected=counts[OutcomeStatus.REJECTED],
                 failures=1,
                 failure_code="unexpected_error",
+                retries=retries,
             )
             self._record_metrics(collector, summary)
             return summary
@@ -92,6 +97,7 @@ class CollectorRunner:
             published=counts[OutcomeStatus.PUBLISHED],
             duplicates=counts[OutcomeStatus.DUPLICATE],
             rejected=counts[OutcomeStatus.REJECTED],
+            retries=retries,
         )
         self._record_metrics(collector, summary)
         return summary

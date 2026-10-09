@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from darkpulse.api.audit import audit_event
 from darkpulse.api.deps import MongoDep
@@ -18,22 +18,36 @@ async def get_trends(
     principal: ViewerDep,
     period: str = "30d",
 ) -> dict[str, Any]:
-    days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(period)
+    if days is None:
+        raise HTTPException(
+            status_code=422,
+            detail="period must be one of: 7d, 30d, 90d",
+        )
     start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     pipeline: list[dict[str, Any]] = [
-        {"$match": {"captured_at": {"$gte": start_date}}},
-        {"$unwind": "$products"},
-        {"$match": {"products.canonical": {"$ne": None}}},
-        {
-            "$project": {
-                "date": {"$substr": ["$captured_at", 0, 10]},
-                "product": "$products.canonical",
-            }
-        },
-        {"$group": {"_id": {"date": "$date", "product": "$product"}, "count": {"$sum": 1}}},
-        {"$sort": {"_id.date": 1}},
-    ]
+            {"$match": {"captured_at": {"$gte": start_date}}},
+            {"$unwind": "$products"},
+            {"$match": {"products.canonical": {"$ne": None}}},
+            {
+                "$project": {
+                    "date": {
+                        "$dateToString": {
+                            "format": "%Y-%m-%d",
+                            "date": {
+                                "$dateFromString": {
+                                    "dateString": {"$toString": "$captured_at"},
+                                }
+                            },
+                        }
+                    },
+                    "product": "$products.canonical",
+                }
+            },
+            {"$group": {"_id": {"date": "$date", "product": "$product"}, "count": {"$sum": 1}}},
+            {"$sort": {"_id.date": 1}},
+        ]
 
     cursor = mongo.intel.aggregate(pipeline)
     results = await cursor.to_list(length=10000)
