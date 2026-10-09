@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -293,6 +294,41 @@ def test_alert_audience_filter_hides_high_role_frames() -> None:
     viewer_frame = {"rule_name": "r", "audience": "viewer", "wallet": "x"}
     redacted = _visible_alert(viewer_frame, viewer)
     assert redacted is not None and "wallet" not in redacted
+
+
+def test_production_accepts_railway_private_datastores() -> None:
+    settings = Settings()
+    settings.service.environment = "production"
+    settings.service.frontend_origin = "https://desk.example.com"
+    settings.service.metrics_port = 0
+    settings.auth.enabled = True
+    settings.auth.local_open_mode = False
+    token = "a" * 32
+    settings.auth.tokens_json = SecretStr(
+        json.dumps({token: {"subject": "analyst-001", "role": "analyst"}})
+    )
+    settings.neo4j.password = "a-real-password-ok"
+    settings.mongo.uri = "mongodb://mongodb.railway.internal:27017"
+    settings.redis.url = "redis://redis.railway.internal:6379/0"
+    enforce_boot(settings)
+
+
+def test_production_rejects_public_plaintext_mongo() -> None:
+    settings = Settings()
+    settings.service.environment = "production"
+    settings.service.frontend_origin = "https://desk.example.com"
+    settings.service.metrics_port = 0
+    settings.auth.enabled = True
+    settings.auth.local_open_mode = False
+    token = "b" * 32
+    settings.auth.tokens_json = SecretStr(
+        json.dumps({token: {"subject": "analyst-001", "role": "analyst"}})
+    )
+    settings.neo4j.password = "a-real-password-ok"
+    settings.mongo.uri = "mongodb://db.example.com:27017"
+    settings.redis.url = "rediss://redis.example.com:6380/0"
+    with pytest.raises(RuntimeError, match="MongoDB URI must use TLS"):
+        enforce_boot(settings)
 
 
 def test_env_must_be_a_known_value() -> None:

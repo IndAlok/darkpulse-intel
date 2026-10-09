@@ -269,6 +269,12 @@ def allowed_origins(settings: Settings) -> set[str]:
     return {settings.service.frontend_origin}
 
 
+def _tls_exempt_host(host: str) -> bool:
+    name = host.strip().lower().rstrip(".")
+    # Railway private DNS has no app-level TLS. The mesh is the boundary.
+    return name in _LOOPBACK or name.endswith(".railway.internal")
+
+
 def _require_datastore_tls(uri: str, name: str) -> None:
     parsed = urlsplit(uri)
     if parsed.scheme in {"mongodb+srv", "rediss"}:
@@ -277,7 +283,7 @@ def _require_datastore_tls(uri: str, name: str) -> None:
     if "tls=true" in query or "ssl=true" in query:
         return
     hosts = {part.rsplit("@", 1)[-1].split(":")[0] for part in parsed.netloc.split(",")}
-    if hosts and hosts <= _LOOPBACK:
+    if hosts and all(_tls_exempt_host(host) for host in hosts):
         return
     raise RuntimeError(f"Production {name} URI must use TLS")
 
