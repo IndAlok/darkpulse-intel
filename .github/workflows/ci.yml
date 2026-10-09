@@ -25,6 +25,14 @@ jobs:
 
   compose:
     runs-on: ubuntu-latest
+    env:
+      # Placeholders only. Compose interpolates the whole file, including
+      # observability services, before applying --profile core.
+      REDIS_PASSWORD: ci-redis-password
+      MONGO_ROOT_PASSWORD: ci-mongo-password
+      NEO4J_PASSWORD: ci-neo4j-password
+      GRAFANA_PASSWORD: ci-grafana-password
+      DARKPULSE_AUTH_TOKENS_JSON: '{"ci_analyst_token_at_least_32_chars":{"subject":"analyst-001","role":"analyst"}}'
     steps:
       - uses: actions/checkout@v4
       - name: Validate compose
