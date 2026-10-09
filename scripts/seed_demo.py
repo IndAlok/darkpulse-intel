@@ -110,6 +110,7 @@ async def main() -> None:
         Path(settings.collection.contract_path),
         Path(settings.collection.safety_policy_path),
         metrics,
+        require_blocklist=False,
     )
     if mongo is None:
         raise RuntimeError("demo seed requires MongoDB")

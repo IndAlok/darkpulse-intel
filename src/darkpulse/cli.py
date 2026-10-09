@@ -106,6 +106,8 @@ def _pipeline_resources(
     contract_path: Path,
     safety_policy_path: Path,
     metrics: IngestionMetrics,
+    *,
+    require_blocklist: bool | None = None,
 ) -> tuple[IngestionPipeline, RecordPublisher, DedupStore, MongoManager | None]:
     publisher: RecordPublisher
     dedup_store: DedupStore
@@ -125,7 +127,11 @@ def _pipeline_resources(
     pipeline = IngestionPipeline(
         safety_policy=SafetyPolicy.from_path(
             safety_policy_path,
-            require_blocklist=settings.service.environment.strip().lower() == "production",
+            require_blocklist=(
+                settings.service.environment.strip().lower() == "production"
+                if require_blocklist is None
+                else require_blocklist
+            ),
         ),
         dedup_store=dedup_store,
         publisher=publisher,
