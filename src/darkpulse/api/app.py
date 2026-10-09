@@ -96,6 +96,7 @@ async def _maybe_seed_demo() -> None:
         logger.exception("demo.seed_failed")
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     enforce_boot(settings)
