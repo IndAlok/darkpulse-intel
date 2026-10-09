@@ -23,6 +23,7 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+.venv313/
 venv/
 dist/
 build/
