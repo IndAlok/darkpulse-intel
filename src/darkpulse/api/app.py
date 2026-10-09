@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import importlib.util
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -73,7 +77,25 @@ API_LATENCY = Histogram(
 _metrics_started = False
 
 
-@asynccontextmanager
+async def _maybe_seed_demo() -> None:
+    if os.getenv("DARKPULSE_DEMO_SEED", "").lower() not in {"1", "true", "yes"}:
+        return
+    try:
+        existing = await app.state.mongo.intel.count_documents({})
+        if existing >= 8:
+            logger.info("demo.seed_skipped", intel=existing)
+            return
+        path = Path(__file__).resolve().parents[3] / "scripts" / "seed_demo.py"
+        spec = importlib.util.spec_from_file_location("darkpulse_seed_demo", path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("demo seed script is missing")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        await module.main()
+    except Exception:
+        logger.exception("demo.seed_failed")
+
+
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     enforce_boot(settings)
@@ -101,6 +123,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.processor = MongoProcessor(settings, app.state.mongo, app.state.neo4j, dedup=dedup)
     await app.state.processor.start()
+    asyncio.create_task(_maybe_seed_demo())
 
     yield
 
