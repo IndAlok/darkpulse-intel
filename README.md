@@ -124,6 +124,18 @@ A login session lasts 8 hours. The API keeps it in process memory and copies it 
 
 Railway uses `railway.toml` (API, health check on `/api/v1/health`), `collector.railway.toml`, and `frontend/railway.toml`. Both backend services read `PORT`.
 
+### Deployed desk
+
+https://darkpulse-desk-production.up.railway.app
+
+Sign in with a configured token below. Login returns a session token. System status (`/operations`) accepts only the administrator token.
+
+| Role | Subject | Token |
+|------|---------|-------|
+| analyst | analyst-001 | `s1orMEQVlY4N9PZnL-g4TGe0kY-dY7z3WfQYrPP1kqU` |
+| administrator | admin-001 | `qtgtaeiFidry6LGBnFqHgrOroWVhtgw4vXH1D-JRdlI` |
+
+
 Before production:
 
 1. Set real values for every credential in `.env.example`.

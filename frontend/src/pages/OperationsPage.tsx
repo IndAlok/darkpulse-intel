@@ -1,6 +1,7 @@
 import { DataState, EmptyState, PageHeader, Panel, SourceBadge } from "../components/Ui";
-import { healthApi, operationsApi } from "../lib/api";
+import { dashboardApi, healthApi, operationsApi } from "../lib/api";
 import { formatDate, formatRelative } from "../lib/formatters";
+import { sourceLabel } from "../lib/intel";
 import { useApi } from "../hooks";
 import type { Principal } from "../types/api";
 
@@ -8,6 +9,7 @@ export default function OperationsPage({ principal }: { principal?: Principal })
   const forbidden = Boolean(principal && principal.role !== "administrator");
   const health = useApi(() => healthApi.detailed());
   const sources = useApi(() => operationsApi.sources());
+  const observed = useApi(() => dashboardApi.sources());
   const processing = useApi(() => operationsApi.processing());
   const onion = useApi(() => operationsApi.onionReview());
   const audit = useApi(() => operationsApi.audit(30));
@@ -34,7 +36,7 @@ export default function OperationsPage({ principal }: { principal?: Principal })
       <PageHeader
         eyebrow="OPERATIONS"
         title="System status"
-        description="Datastore health, public source registry, and collector history. Telegram and onion stay CLI-gated."
+        description="Observed classes come from stored intelligence. The registry lists configured collectors, which stay off until authorized."
       />
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Datastore health">
@@ -70,7 +72,37 @@ export default function OperationsPage({ principal }: { principal?: Principal })
             </ul>
           </DataState>
         </Panel>
-        <Panel title="Source registry" className="lg:col-span-2">
+        <Panel title="Observed sources" className="lg:col-span-2" kicker="live corpus">
+          <DataState
+            loading={observed.loading}
+            error={observed.error}
+            retry={observed.reload}
+            code={observed.errorCode}
+          >
+            {(observed.data?.data ?? []).length ? (
+              <ul className="space-y-2 text-sm">
+                {(observed.data?.data ?? []).map((source) => (
+                  <li key={source.source_class} className="flex items-center justify-between gap-3">
+                    <span>
+                      <span className="capitalize">{sourceLabel(source.source_class)}</span>{" "}
+                      <SourceBadge source={source.source_class} />
+                    </span>
+                    <span className="font-mono text-xs text-muted">
+                      {source.record_count} records · avg {Math.round(source.avg_severity)}
+                      {source.last_seen ? ` · ${formatRelative(source.last_seen)}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                title="No observed sources"
+                detail="Published intelligence has no source class yet."
+              />
+            )}
+          </DataState>
+        </Panel>
+        <Panel title="Configured collectors" className="lg:col-span-2" kicker="not running">
           <DataState loading={sources.loading} error={sources.error} retry={sources.reload} code={sources.errorCode}>
             <ul className="space-y-2 text-sm">
               {(sources.data?.data ?? []).map((source) => (
